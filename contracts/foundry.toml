@@ -10,6 +10,8 @@ solc_version = "0.8.28"
 evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
+# script/DeployZecured.s.sol writes deployments/base-sepolia.json (or base-sepolia.dry-run.json in a simulation).
+fs_permissions = [{ access = "read-write", path = "./deployments" }]
 # Explicit remappings only: morpho-blue and openzeppelin ship their own nested forge-std copies,
 # auto-detection could otherwise pick the wrong one.
 auto_detect_remappings = false
@@ -22,6 +24,14 @@ remappings = [
 [profile.default.fuzz]
 runs = 256
 
+[profile.default.invariant]
+# The invariant suite runs against the real Morpho Blue on a Base Sepolia fork, so the campaign is kept small.
+# Deeper runs: FOUNDRY_INVARIANT_RUNS=256 FOUNDRY_INVARIANT_DEPTH=100 forge test --isolate --match-path 'test/invariant/*'
+runs = 32
+depth = 50
+# Handler actions that may legitimately revert use try/catch, so any other revert is a failure.
+fail_on_revert = true
+
 [rpc_endpoints]
 # Fork tests read BASE_SEPOLIA_RPC_URL directly and fall back to https://sepolia.base.org when unset.
 base_sepolia = "${BASE_SEPOLIA_RPC_URL}"
@@ -32,3 +42,7 @@ line_length = 120
 [lint]
 # Style lints apply to src/ only; tests and the throwaway spike helpers are exempt.
 ignore = ["test/**/*.sol"]
+# - screaming-snake-case-immutable: public immutables (registry(), adapter(), morpho(), ...) are part of the ABI in
+#   docs/INTERFACES.md and keep their camelCase names.
+# - asm-keccak256: plain keccak256(abi.encode(...)) is kept for readability (EIP-712 hashing must be auditable).
+exclude_lints = ["screaming-snake-case-immutable", "asm-keccak256"]
