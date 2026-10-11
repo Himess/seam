@@ -132,6 +132,8 @@ contract ZcashHeaderRelay is IZcashHeaderRelay {
     /// @inheritdoc IZcashHeaderRelay
     function submitHeaders(bytes[] calldata headers) external {
         for (uint256 i; i < headers.length; ++i) {
+            // A header someone else submitted first is skipped, so a race cannot make the batch fail.
+            if (headers[i].length == HEADER_LENGTH && _blocks[ZcashPow.blockHash(headers[i])].height != 0) continue;
             submitHeader(headers[i]);
         }
     }
@@ -182,7 +184,7 @@ contract ZcashHeaderRelay is IZcashHeaderRelay {
     /// @inheritdoc IZcashHeaderRelay
     function isInBestChain(bytes32 blockHash) public view returns (bool) {
         uint256 height = _blocks[blockHash].height;
-        return height != 0 && _bestHashAt[height] == blockHash;
+        return height != 0 && height <= _blocks[_bestTip].height && _bestHashAt[height] == blockHash;
     }
 
     /// @inheritdoc IZcashHeaderRelay
@@ -222,7 +224,7 @@ contract ZcashHeaderRelay is IZcashHeaderRelay {
 
     /// @inheritdoc IZcashHeaderRelay
     function bestBlockHashAt(uint256 height) external view returns (bytes32) {
-        return _bestHashAt[height];
+        return height <= _blocks[_bestTip].height ? _bestHashAt[height] : bytes32(0);
     }
 
     // --- Contextual checks --------------------------------------------------------------------------------------
@@ -369,7 +371,9 @@ contract ZcashHeaderRelay is IZcashHeaderRelay {
     function _branchOf(bytes32 parentHash, uint256 parentHeight) private view returns (Branch memory branch) {
         bytes32 h = parentHash;
         uint256 height = parentHeight;
-        while (_bestHashAt[height] != h) {
+        // Entries above the tip are stale leftovers of an orphaned branch (never cleared, see _updateBestChain).
+        uint256 tipHeight = _blocks[_bestTip].height;
+        while (height > tipHeight || _bestHashAt[height] != h) {
             h = _blocks[h].prevHash;
             --height;
         }
@@ -389,8 +393,10 @@ contract ZcashHeaderRelay is IZcashHeaderRelay {
     }
 
     /// @dev Makes the new block the tip if it has strictly more work than the current tip (ties keep the block seen
-    ///      first). On a reorganisation the side branch is written into the best-chain indexes and the heights above
-    ///      the new tip are cleared.
+    ///      first). On a reorganisation the side branch is written into the best-chain indexes. Heights above the new
+    ///      tip are not cleared: every read is bounded by the tip height. Clearing them cost gas per orphaned height,
+    ///      so a long, light attacker branch could make the honest reorganisation exceed the transaction gas limit
+    ///      and freeze the relay (contracts review R-1).
     function _updateBestChain(
         bytes32 blockHash,
         uint256 height,
@@ -402,7 +408,6 @@ contract ZcashHeaderRelay is IZcashHeaderRelay {
         bytes32 previousTip = _bestTip;
         BlockRecord storage tip = _blocks[previousTip];
         if (chainWork <= tip.chainWork) return;
-        uint256 previousHeight = tip.height;
 
         uint256 depth = branch.hashes.length;
         for (uint256 k; k < depth; ++k) {
@@ -414,9 +419,6 @@ contract ZcashHeaderRelay is IZcashHeaderRelay {
         _bestHashAt[height] = blockHash;
         _setPacked(_bestTimes, height, time);
         _setPacked(_bestBits, height, bits);
-        for (uint256 h = height + 1; h <= previousHeight; ++h) {
-            delete _bestHashAt[h];
-        }
         _bestTip = blockHash;
         emit BestChainUpdated(blockHash, height, previousTip, branch.forkHeight);
     }

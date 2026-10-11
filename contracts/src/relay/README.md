@@ -62,8 +62,15 @@ rule is covered by synthetic headers with genuine Equihash solutions.
 **Testnet caveat.** The minimum-difficulty rule lets anyone mine a block at difficulty 1 when its time is more than
 450 s after its parent's. Such a block adds 32 units of work, a normal post-NU7 block about 380,000. The 2-hour
 clock rule bounds how far an attacker can push timestamps, but blocks of that kind can still extend the best chain
-cheaply. `confirmations` counts them as blocks; `confirmationWork` does not inflate. A consumer that needs reorg
-resistance on Testnet should require work, not only a block count (docs/TIER2.md).
+cheaply, and once the averaging window holds such blocks the following ones stay easy too: in a simulation, 300
+extra confirmations cost 0.085 of one honest block's work. `confirmations` counts them as blocks;
+`confirmationWork` does not inflate. A consumer that needs reorg resistance on Testnet must require work, never a
+block count (docs/TIER2.md).
+
+**Reorganisations.** A reorganisation rewrites the best-chain index of the new branch only; heights above the new
+tip are left as stale entries that every view ignores (all reads are bounded by the tip height). Clearing them used
+to cost gas per orphaned height, so a long, light branch built on a stale tip could push the honest reorganisation
+above the transaction gas limit and freeze the relay (contracts review R-1).
 
 ## Gas
 

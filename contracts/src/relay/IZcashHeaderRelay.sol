@@ -56,7 +56,8 @@ interface IZcashHeaderRelay {
     function isInBestChain(bytes32 blockHash) external view returns (bool);
 
     /// @notice Number of best-chain blocks from this block to the tip, inclusive (1 = the tip); 0 if the block is
-    ///         not on the best chain. On Testnet see `confirmationWork`.
+    ///         not on the best chain. Not a security measure on Testnet: minimum-difficulty blocks (and the easy
+    ///         blocks that follow them) make block counts nearly free to inflate. Use `confirmationWork`.
     function confirmations(bytes32 blockHash) external view returns (uint256);
 
     /// @notice Cumulative work of the best-chain blocks built on top of this block; 0 if it is not on the best
