@@ -15,6 +15,7 @@ optimizer_runs = 200
 fs_permissions = [
     { access = "read-write", path = "./deployments" },
     { access = "read", path = "./test/relay/fixtures" },
+    { access = "read", path = "./script/artifacts" },
 ]
 # Explicit remappings only: morpho-blue and openzeppelin ship their own nested forge-std copies,
 # auto-detection could otherwise pick the wrong one.
