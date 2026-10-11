@@ -11,7 +11,11 @@ evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
 # script/DeployZecured.s.sol writes deployments/base-sepolia.json (or base-sepolia.dry-run.json in a simulation).
-fs_permissions = [{ access = "read-write", path = "./deployments" }]
+# test/relay reads its Zcash Testnet header fixtures (read-only).
+fs_permissions = [
+    { access = "read-write", path = "./deployments" },
+    { access = "read", path = "./test/relay/fixtures" },
+]
 # Explicit remappings only: morpho-blue and openzeppelin ship their own nested forge-std copies,
 # auto-detection could otherwise pick the wrong one.
 auto_detect_remappings = false
