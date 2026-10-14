@@ -37,6 +37,13 @@ depth = 50
 # Handler actions that may legitimately revert use try/catch, so any other revert is a failure.
 fail_on_revert = true
 
+[profile.halmos]
+# Symbolic checks (docs/TESTING.md § 1b): `FOUNDRY_PROFILE=halmos halmos`, settings in halmos.toml.
+# Only test/halmos is built, into its own directories; nothing there needs a fork.
+test = "test/halmos"
+out = "out/halmos"
+cache_path = "cache/halmos"
+
 [rpc_endpoints]
 # Fork tests read BASE_SEPOLIA_RPC_URL directly and fall back to https://sepolia.base.org when unset.
 base_sepolia = "${BASE_SEPOLIA_RPC_URL}"
