@@ -43,6 +43,9 @@ fail_on_revert = true
 test = "test/halmos"
 out = "out/halmos"
 cache_path = "cache/halmos"
+# Forge >= 1.x links test code dynamically by default and rewrites `new` into `deployCode`, which Halmos 0.3.3
+# cannot execute (5 zZEC guard checks fail in setUp). Halmos needs the classic static linking.
+dynamic_test_linking = false
 
 [rpc_endpoints]
 # Fork tests read BASE_SEPOLIA_RPC_URL directly and fall back to https://sepolia.base.org when unset.
