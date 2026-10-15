@@ -2,25 +2,29 @@
 pragma solidity 0.8.28;
 
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
-import {IZcashHeaderRelay} from "./IZcashHeaderRelay.sol";
+import {IZcashHeaderRelay, ZCASH_MAINNET} from "./IZcashHeaderRelay.sol";
 import {ZcashEquihash} from "./ZcashEquihash.sol";
 import {ZcashPow} from "./ZcashPow.sol";
 
 /// @title ZcashHeaderRelay
-/// @notice Zcash Testnet block-header relay. Starting from a trusted checkpoint it accepts headers that pass the
-///         header consensus rules and keeps the best chain by cumulative work.
-/// @dev Tier 2 foundation (docs/TIER2.md): not wired into the Registry. Each submitted header must
+/// @notice Zcash block-header relay for one network, fixed at deployment by `RelayParams` (Zcash Mainnet, Zcash
+///         Testnet, or another chain with the same header rules). Starting from a trusted checkpoint it accepts
+///         headers that pass the header consensus rules and keeps the best chain by cumulative work.
+/// @dev Tier 2 foundation (docs/TIER2.md). Each submitted header must
 ///        1. be a 1487-byte v4 header (version >= 4 as an int32) with a 1344-byte solution, whose parent is known;
-///        2. have time > median-time-past of the 11 previous blocks, time <= that median + 90 min (Testnet, from
-///           height 653,606) and time <= block.timestamp + 2 h (Zebra's local-clock rule, Base's clock here);
-///        3. carry nBits equal to the difficulty adjustment (Testnet minimum-difficulty rule included);
+///        2. have time > median-time-past of the 11 previous blocks, time <= that median + 90 min (from
+///           `maxTimeStartHeight`: every height on Mainnet, 653,606 on Testnet) and time <= block.timestamp + 2 h
+///           (Zebra's local-clock rule, Base's clock here);
+///        3. carry nBits equal to the difficulty adjustment (with the Testnet minimum-difficulty rule where
+///           `minDifficultyBlocks` is set);
 ///        4. carry a valid Equihash (200, 9) solution;
 ///        5. hash (SHA256d, little-endian) to at most the target decoded from nBits.
-///      Rules and parameters follow Zebra v7.0.0-rc.0 (commit 6d1e414d6f55e4180d0e47baaa934bf97d5b4fec):
-///      zebra-state/src/service/check.rs `difficulty_threshold_and_time_are_valid`,
-///      zebra-state/src/service/check/difficulty.rs, zebra-consensus/src/block/check.rs, and ZIP 218 / ZIP 259:
-///      from NU7 (Testnet height 4,465,026) the target spacing is 25 s and the averaging window 102 blocks (75 s and
-///      17 before); the Testnet minimum-difficulty gap is 450 s on both sides (6 x 75 s, then 18 x 25 s).
+///      Rules follow Zebra v7.0.0-rc.0 (https://github.com/ZcashFoundation/zebra/tree/v7.0.0-rc.0, commit
+///      6d1e414d6f55e4180d0e47baaa934bf97d5b4fec): zebra-state/src/service/check.rs
+///      `difficulty_threshold_and_time_are_valid`, zebra-state/src/service/check/difficulty.rs,
+///      zebra-consensus/src/block/check.rs, and ZIP 218 / ZIP 259. Equihash (200, 9), the 11-block median, the
+///      2-hour clock rule, the damping and the adjustment bounds are the same on every network and stay constants;
+///      the parameters that differ are listed, with their sources, on `RelayParams` and in docs/ref/FACTS.md.
 ///
 ///      Not verified here: anything inside the block (transactions, merkle root, block commitments). Those fields
 ///      are stored as committed by proof of work, for later inclusion proofs.
@@ -30,31 +34,88 @@ import {ZcashPow} from "./ZcashPow.sol";
 ///      adjustment needs cost about 17 cold storage reads. A header on a side branch walks back to the best chain
 ///      first; the walk is as long as the branch.
 contract ZcashHeaderRelay is IZcashHeaderRelay {
-    // --- Zcash Testnet parameters ---------------------------------------------------------------------------
+    /// @notice The consensus parameters that differ between Zcash networks (constructor input, immutable).
+    /// @dev Values for the two public networks (contracts/config/relay-testnet.json, relay-mainnet.json), checked in
+    ///      Zebra v7.0.0-rc.0 (paths below are relative to https://github.com/ZcashFoundation/zebra/blob/v7.0.0-rc.0/)
+    ///      and the ZIPs (https://github.com/zcash/zips, commit 929a92f7383e036b6f6a48f43ec88c5bdd130003).
+    struct RelayParams {
+        /// @dev `ZCASH_TESTNET` = keccak256("zcash-testnet") or `ZCASH_MAINNET` = keccak256("zcash-mainnet").
+        bytes32 networkId;
+        /// @dev PoWLimit rounded through its compact form, as zcashd and Zebra use it: Testnet 2^251 - 1 ->
+        ///      0x07ffff << 232, Mainnet 2^243 - 1 -> 0x07ffff << 224 (zebra-chain/src/work/difficulty.rs
+        ///      `target_difficulty_limit`, zebra-chain/src/parameters/network/testnet.rs `ParametersBuilder::default`;
+        ///      protocol specification § 5.3 `PoWLimit`).
+        uint256 powLimit;
+        /// @dev ToCompact(PoWLimit): Testnet 0x2007ffff, Mainnet 0x1f07ffff. Must encode `powLimit` exactly, and
+        ///      `powLimit` must be below 2^255.
+        uint32 powLimitBits;
+        /// @dev The Testnet minimum-difficulty rule (ZIP 205, ZIP 208, ZIP 218 § "Minimum difficulty blocks on
+        ///      Testnet"): a block more than 6 (18 from NU7) target spacings after its parent must carry
+        ///      `powLimitBits`. Testnet: true. Mainnet: false (zebra-chain/src/parameters/network_upgrade.rs
+        ///      `minimum_difficulty_spacing_for_height` returns None for Mainnet, and
+        ///      zebra-state/src/service/check/difficulty.rs `expected_difficulty_threshold` asserts the rule only
+        ///      fires on test networks); the constructor refuses it with `ZCASH_MAINNET`.
+        bool minDifficultyBlocks;
+        /// @dev First height of that rule: Testnet 299,188 (network_upgrade.rs
+        ///      `TESTNET_MINIMUM_DIFFICULTY_START_HEIGHT`). Must be 0 when `minDifficultyBlocks` is false.
+        uint32 minDifficultyStartHeight;
+        /// @dev First height of "time <= median-time-past + 90 min": Testnet 653,606
+        ///      (network_upgrade.rs `TESTNET_MAX_TIME_START_HEIGHT`); Mainnet 0, every height (zebra-chain/src/
+        ///      parameters/network.rs `is_max_block_time_enforced` returns true on Mainnet; the protocol
+        ///      specification § 7.6 says from height 2). `NEVER` (type(uint32).max): the rule never applies.
+        uint32 maxTimeStartHeight;
+        /// @dev NU7 activation height (ZIP 259, which requires a multiple of 3): Testnet 4,465,026
+        ///      (zebra-chain/src/parameters/constants.rs). Mainnet: not assigned yet (absent from Zebra v7.0.0-rc.0 and
+        ///      from Zebra main at 6cc6d360e5 on 2026-10-15; ZIP 259 says "TBD (To be set on OCT 20)"), so `NEVER`
+        ///      until then. A relay deployed with `NEVER` expects the pre-NU7 nBits from the real activation block on,
+        ///      so it refuses that block and can extend nothing above it.
+        uint32 nu7ActivationHeight;
+        /// @dev PoWTargetSpacing before NU7 (from Blossom): 75 s on both networks (network_upgrade.rs
+        ///      `POST_BLOSSOM_POW_TARGET_SPACING`).
+        uint32 preNu7TargetSpacing;
+        /// @dev PoWAveragingWindow before NU7: 17 on both networks (network_upgrade.rs `POW_AVERAGING_WINDOW`).
+        uint32 preNu7AveragingWindow;
+        /// @dev PostNU7PoWTargetSpacing: 25 s (ZIP 218; network_upgrade.rs `POST_NU7_POW_TARGET_SPACING`).
+        uint32 postNu7TargetSpacing;
+        /// @dev PostNU7PoWAveragingWindow: 102 (ZIP 218; network_upgrade.rs `POST_NU7_POW_AVERAGING_WINDOW`).
+        uint32 postNu7AveragingWindow;
+        /// @dev Lowest accepted checkpoint height: from there on these parameters describe the chain. The relay
+        ///      has no pre-Blossom (150 s) rules, so it is at least Blossom's height: Testnet 653,606 (Blossom at
+        ///      584,000, the minimum-difficulty rule since 299,188, the 90-minute rule since 653,606), Mainnet
+        ///      653,600 (Blossom, constants.rs; the 90-minute rule applies at every height). At least 112, so that
+        ///      the 113 context blocks start at or above the genesis block.
+        uint32 minCheckpointHeight;
+    }
 
-    /// @notice NU7 activation height on Testnet (ZIP 259).
-    uint256 public constant NU7_ACTIVATION_HEIGHT = 4_465_026;
-    /// @notice Lowest supported checkpoint height: from Testnet height 653,606 the rules implemented here (75 s
-    ///         spacing since Blossom at 584,000, the 450 s minimum-difficulty gap since 299,188, the 90-minute
-    ///         maximum time since 653,606) apply unchanged until NU7.
-    uint256 public constant MIN_CHECKPOINT_HEIGHT = 653_606;
-    /// @notice ToCompact(PoWLimit) for Testnet, PoWLimit = 2^251 - 1.
-    uint32 public constant POW_LIMIT_BITS = 0x2007ffff;
-    /// @notice PoWLimit rounded through its compact form, as Zebra uses it (0x07ffff << 232).
-    uint256 public constant POW_LIMIT = 0x07ffff << 232;
+    /// @notice A start height that is never reached: the rule (or NU7) never applies.
+    uint32 public constant NEVER = type(uint32).max;
+    /// @notice The largest averaging window a network may use (ZIP 218's 102).
+    uint256 public constant MAX_AVERAGING_WINDOW = 102;
     /// @notice PoWAveragingWindow(height) + PoWMedianBlockSpan for the largest window (102 + 11).
-    uint256 public constant CONTEXT_LENGTH = 113;
+    uint256 public constant CONTEXT_LENGTH = MAX_AVERAGING_WINDOW + MEDIAN_BLOCK_SPAN;
 
     uint256 private constant HEADER_LENGTH = 1487;
     uint256 private constant MEDIAN_BLOCK_SPAN = 11;
-    uint256 private constant PRE_NU7_AVERAGING_WINDOW = 17;
-    uint256 private constant POST_NU7_AVERAGING_WINDOW = 102;
-    uint256 private constant PRE_NU7_TARGET_SPACING = 75;
-    uint256 private constant POST_NU7_TARGET_SPACING = 25;
     uint256 private constant PRE_NU7_MIN_DIFFICULTY_GAP_MULTIPLIER = 6;
     uint256 private constant POST_NU7_MIN_DIFFICULTY_GAP_MULTIPLIER = 18;
     uint256 private constant BLOCK_MAX_TIME_SINCE_MEDIAN = 90 minutes;
     uint256 private constant MAX_FUTURE_BLOCK_TIME = 2 hours;
+
+    // --- Network parameters (immutable) -------------------------------------------------------------------------
+
+    /// @inheritdoc IZcashHeaderRelay
+    bytes32 public immutable networkId;
+    uint256 private immutable _powLimit;
+    uint32 private immutable _powLimitBits;
+    bool private immutable _minDifficultyBlocks;
+    uint32 private immutable _minDifficultyStartHeight;
+    uint32 private immutable _maxTimeStartHeight;
+    uint32 private immutable _nu7ActivationHeight;
+    uint32 private immutable _preNu7TargetSpacing;
+    uint32 private immutable _preNu7AveragingWindow;
+    uint32 private immutable _postNu7TargetSpacing;
+    uint32 private immutable _postNu7AveragingWindow;
+    uint32 private immutable _minCheckpointHeight;
 
     // --- State --------------------------------------------------------------------------------------------------
 
@@ -86,19 +147,37 @@ contract ZcashHeaderRelay is IZcashHeaderRelay {
     mapping(uint256 slot => uint256) private _bestBits; // slot = height >> 3: eight uint32 nBits
     bytes32 private _bestTip;
 
+    /// @param params_ The network's consensus parameters (see `RelayParams`).
     /// @param checkpointHash_ Hash of the trusted checkpoint block (internal byte order).
-    /// @param checkpointHeight_ Its height.
+    /// @param checkpointHeight_ Its height, at least `params_.minCheckpointHeight`.
     /// @param contextTimes Times of the 113 blocks ending with the checkpoint, oldest first
     ///        (heights checkpointHeight_ - 112 .. checkpointHeight_).
-    /// @param contextBits Their nBits, same order.
+    /// @param contextBits Their nBits, same order; each target at most `params_.powLimit`.
     constructor(
+        RelayParams memory params_,
         bytes32 checkpointHash_,
         uint256 checkpointHeight_,
         uint32[] memory contextTimes,
         uint32[] memory contextBits
     ) {
-        if (checkpointHash_ == bytes32(0) || checkpointHeight_ < MIN_CHECKPOINT_HEIGHT || checkpointHeight_ >= 2 ** 31)
-        {
+        _validateParams(params_);
+        networkId = params_.networkId;
+        _powLimit = params_.powLimit;
+        _powLimitBits = params_.powLimitBits;
+        _minDifficultyBlocks = params_.minDifficultyBlocks;
+        _minDifficultyStartHeight = params_.minDifficultyStartHeight;
+        _maxTimeStartHeight = params_.maxTimeStartHeight;
+        _nu7ActivationHeight = params_.nu7ActivationHeight;
+        _preNu7TargetSpacing = params_.preNu7TargetSpacing;
+        _preNu7AveragingWindow = params_.preNu7AveragingWindow;
+        _postNu7TargetSpacing = params_.postNu7TargetSpacing;
+        _postNu7AveragingWindow = params_.postNu7AveragingWindow;
+        _minCheckpointHeight = params_.minCheckpointHeight;
+
+        if (
+            checkpointHash_ == bytes32(0) || checkpointHeight_ < params_.minCheckpointHeight
+                || checkpointHeight_ >= 2 ** 31
+        ) {
             revert InvalidCheckpoint();
         }
         if (contextTimes.length != CONTEXT_LENGTH || contextBits.length != CONTEXT_LENGTH) {
@@ -107,7 +186,7 @@ contract ZcashHeaderRelay is IZcashHeaderRelay {
         uint256 first = checkpointHeight_ + 1 - CONTEXT_LENGTH;
         for (uint256 k; k < CONTEXT_LENGTH; ++k) {
             (uint256 target, bool valid) = ZcashPow.decodeBits(contextBits[k]);
-            if (!valid || target > POW_LIMIT) revert InvalidContextBits(k);
+            if (!valid || target > params_.powLimit) revert InvalidContextBits(k);
             _setPacked(_bestTimes, first + k, contextTimes[k]);
             _setPacked(_bestBits, first + k, contextBits[k]);
         }
@@ -125,6 +204,29 @@ contract ZcashHeaderRelay is IZcashHeaderRelay {
         checkpointHash = checkpointHash_;
         checkpointHeight = checkpointHeight_;
         emit BestChainUpdated(checkpointHash_, checkpointHeight_, bytes32(0), checkpointHeight_);
+    }
+
+    /// @dev Rejects parameters the relay cannot apply consistently. It does not pin the public networks' values:
+    ///      those come from the deployment configuration and can be read back with `params()`.
+    function _validateParams(RelayParams memory p) private pure {
+        if (p.networkId == bytes32(0)) revert InvalidNetworkId();
+        // powLimitBits must be the canonical compact form of powLimit (Zebra rounds PoWLimit through it), and powLimit
+        // below 2^255, so that ThresholdBits (up to 1.32 times a mean target) cannot overflow. Both networks are below
+        // 2^251.
+        (uint256 limit, bool valid) = ZcashPow.decodeBits(p.powLimitBits);
+        if (!valid || limit != p.powLimit || ZcashPow.encodeBits(limit) != p.powLimitBits || limit >> 255 != 0) {
+            revert InvalidPowLimit();
+        }
+        // Zebra asserts that minimum-difficulty blocks never occur on Mainnet; an unused start height must be 0.
+        if (p.minDifficultyBlocks ? p.networkId == ZCASH_MAINNET : p.minDifficultyStartHeight != 0) {
+            revert InvalidMinDifficultyRule();
+        }
+        if (
+            p.preNu7TargetSpacing == 0 || p.postNu7TargetSpacing == 0 || p.preNu7AveragingWindow == 0
+                || p.postNu7AveragingWindow == 0 || p.preNu7AveragingWindow > MAX_AVERAGING_WINDOW
+                || p.postNu7AveragingWindow > MAX_AVERAGING_WINDOW
+        ) revert InvalidDifficultyAdjustment();
+        if (p.minCheckpointHeight < CONTEXT_LENGTH - 1) revert InvalidMinCheckpointHeight();
     }
 
     // --- Submission ---------------------------------------------------------------------------------------------
@@ -180,6 +282,24 @@ contract ZcashHeaderRelay is IZcashHeaderRelay {
     }
 
     // --- Views --------------------------------------------------------------------------------------------------
+
+    /// @notice The network's consensus parameters, as given to the constructor.
+    function params() external view returns (RelayParams memory) {
+        return RelayParams({
+            networkId: networkId,
+            powLimit: _powLimit,
+            powLimitBits: _powLimitBits,
+            minDifficultyBlocks: _minDifficultyBlocks,
+            minDifficultyStartHeight: _minDifficultyStartHeight,
+            maxTimeStartHeight: _maxTimeStartHeight,
+            nu7ActivationHeight: _nu7ActivationHeight,
+            preNu7TargetSpacing: _preNu7TargetSpacing,
+            preNu7AveragingWindow: _preNu7AveragingWindow,
+            postNu7TargetSpacing: _postNu7TargetSpacing,
+            postNu7AveragingWindow: _postNu7AveragingWindow,
+            minCheckpointHeight: _minCheckpointHeight
+        });
+    }
 
     /// @inheritdoc IZcashHeaderRelay
     function isInBestChain(bytes32 blockHash) public view returns (bool) {
@@ -237,7 +357,8 @@ contract ZcashHeaderRelay is IZcashHeaderRelay {
         // MedianTime(height): median of the times of the 11 previous blocks.
         uint256 medianTimePast = _medianTime(branch, height - 1);
         if (time <= medianTimePast) revert TimeTooEarly(time, medianTimePast);
-        if (time > medianTimePast + BLOCK_MAX_TIME_SINCE_MEDIAN) {
+        // Zebra `Network::is_max_block_time_enforced`: every height on Mainnet, from 653,606 on Testnet.
+        if (height >= _maxTimeStartHeight && time > medianTimePast + BLOCK_MAX_TIME_SINCE_MEDIAN) {
             revert TimeTooLate(time, medianTimePast + BLOCK_MAX_TIME_SINCE_MEDIAN);
         }
         if (time > block.timestamp + MAX_FUTURE_BLOCK_TIME) {
@@ -254,20 +375,23 @@ contract ZcashHeaderRelay is IZcashHeaderRelay {
         view
         returns (uint256)
     {
-        bool nu7 = height >= NU7_ACTIVATION_HEIGHT;
-        uint256 spacing = nu7 ? POST_NU7_TARGET_SPACING : PRE_NU7_TARGET_SPACING;
+        bool nu7 = height >= _nu7ActivationHeight;
+        uint256 spacing = nu7 ? _postNu7TargetSpacing : _preNu7TargetSpacing;
 
         // Testnet minimum-difficulty rule (ZIP 205 / 208, ZIP 218 § "Minimum difficulty blocks on Testnet"): a block
         // whose time is MORE than the gap after its parent's time must carry ToCompact(PoWLimit). The gap is
-        // 6 x 75 s before NU7 and 18 x 25 s from NU7: 450 s either way.
-        uint256 gap = spacing * (nu7 ? POST_NU7_MIN_DIFFICULTY_GAP_MULTIPLIER : PRE_NU7_MIN_DIFFICULTY_GAP_MULTIPLIER);
-        if (time > parentTime + gap) return POW_LIMIT_BITS;
+        // 6 x 75 s before NU7 and 18 x 25 s from NU7 on Testnet: 450 s either way. Never on Mainnet.
+        if (_minDifficultyBlocks && height >= _minDifficultyStartHeight) {
+            uint256 gap =
+                spacing * (nu7 ? POST_NU7_MIN_DIFFICULTY_GAP_MULTIPLIER : PRE_NU7_MIN_DIFFICULTY_GAP_MULTIPLIER);
+            if (time > parentTime + gap) return _powLimitBits;
+        }
 
-        uint256 window = nu7 ? POST_NU7_AVERAGING_WINDOW : PRE_NU7_AVERAGING_WINDOW;
+        uint256 window = nu7 ? _postNu7AveragingWindow : _preNu7AveragingWindow;
         // MedianTime(height - window): median of the 11 times before the window.
         uint256 olderMedian = _medianTime(branch, height - 1 - window);
         return ZcashPow.thresholdBits(
-            _meanTarget(branch, height - 1, window), newerMedian, olderMedian, window * spacing, POW_LIMIT
+            _meanTarget(branch, height - 1, window), newerMedian, olderMedian, window * spacing, _powLimit
         );
     }
 

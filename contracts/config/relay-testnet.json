@@ -1,0 +1,22 @@
+{
+  "description": "Consensus parameters of a ZcashHeaderRelay that follows Zcash Testnet (script/DeployRelay.s.sol, RELAY_NETWORK=testnet). Every value is verified in docs/ref/FACTS.md (Zebra v7.0.0-rc.0, ZIP 218, ZIP 259) and documented on ZcashHeaderRelay.RelayParams; test/relay/ZcashHeaderRelayParams.t.sol checks that this file parses to the parameters the Testnet tests use.",
+  "zcashNetwork": "zcash-testnet",
+  "displayName": "Zcash Testnet",
+  "powLimit": "0x07ffff0000000000000000000000000000000000000000000000000000000000",
+  "powLimitBits": "0x2007ffff",
+  "minDifficultyBlocks": true,
+  "minDifficultyStartHeight": 299188,
+  "maxTimeStartHeight": 653606,
+  "nu7ActivationHeight": 4465026,
+  "preNu7TargetSpacing": 75,
+  "preNu7AveragingWindow": 17,
+  "postNu7TargetSpacing": 25,
+  "postNu7AveragingWindow": 102,
+  "minCheckpointHeight": 653606,
+  "notes": {
+    "networkId": "keccak256(zcashNetwork) = ZCASH_TESTNET in src/relay/IZcashHeaderRelay.sol",
+    "powLimit": "PoWLimit = 2^251 - 1, rounded through its compact form 0x2007ffff",
+    "minDifficultyBlocks": "a block more than 450 s after its parent (6 x 75 s before NU7, 18 x 25 s from NU7) must carry powLimitBits",
+    "minCheckpointHeight": "the 90-minute rule starts at 653,606; Blossom (75 s spacing) at 584,000"
+  }
+}

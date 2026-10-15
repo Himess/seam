@@ -439,25 +439,26 @@ contract ZcashHeaderRelayTest is RelayFixtures {
 
     function test_constructor_rejectsBadInput() public {
         RealFixture memory fx = _loadReal(RECENT);
+        ZcashHeaderRelay.RelayParams memory p = _testnetParams();
         vm.expectRevert(IZcashHeaderRelay.InvalidCheckpoint.selector);
-        new ZcashHeaderRelay(bytes32(0), fx.checkpointHeight, fx.contextTimes, fx.contextBits);
+        this.deployRelay(p, bytes32(0), fx.checkpointHeight, fx.contextTimes, fx.contextBits);
         vm.expectRevert(IZcashHeaderRelay.InvalidCheckpoint.selector);
-        new ZcashHeaderRelay(fx.checkpointHash, 653_605, fx.contextTimes, fx.contextBits);
+        this.deployRelay(p, fx.checkpointHash, 653_605, fx.contextTimes, fx.contextBits);
 
         uint32[] memory short = new uint32[](112);
         vm.expectRevert(IZcashHeaderRelay.InvalidContextLength.selector);
-        new ZcashHeaderRelay(fx.checkpointHash, fx.checkpointHeight, short, fx.contextBits);
+        this.deployRelay(p, fx.checkpointHash, fx.checkpointHeight, short, fx.contextBits);
 
         uint32[] memory bits = fx.contextBits;
         bits[7] = 0x2008ffff; // above PoWLimit
         vm.expectRevert(abi.encodeWithSelector(IZcashHeaderRelay.InvalidContextBits.selector, 7));
-        new ZcashHeaderRelay(fx.checkpointHash, fx.checkpointHeight, fx.contextTimes, bits);
+        this.deployRelay(p, fx.checkpointHash, fx.checkpointHeight, fx.contextTimes, bits);
         bits[7] = 0x1e812345; // sign bit set: negative
         vm.expectRevert(abi.encodeWithSelector(IZcashHeaderRelay.InvalidContextBits.selector, 7));
-        new ZcashHeaderRelay(fx.checkpointHash, fx.checkpointHeight, fx.contextTimes, bits);
+        this.deployRelay(p, fx.checkpointHash, fx.checkpointHeight, fx.contextTimes, bits);
         bits[7] = 0x1e000000; // zero
         vm.expectRevert(abi.encodeWithSelector(IZcashHeaderRelay.InvalidContextBits.selector, 7));
-        new ZcashHeaderRelay(fx.checkpointHash, fx.checkpointHeight, fx.contextTimes, bits);
+        this.deployRelay(p, fx.checkpointHash, fx.checkpointHeight, fx.contextTimes, bits);
     }
 
     // --- helpers ------------------------------------------------------------------------------------------------
