@@ -10,13 +10,18 @@ solc_version = "0.8.28"
 evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
-# script/DeployZecured.s.sol writes deployments/base-sepolia.json (or base-sepolia.dry-run.json in a simulation).
-# test/relay reads its Zcash Testnet header fixtures (read-only).
+# script/DeployZecured.s.sol reads config/zecured-<network>.json and writes deployments/<network>.json (or
+# <network>.dry-run.json in a simulation). test/relay reads its Zcash Testnet header fixtures (read-only).
 fs_permissions = [
     { access = "read-write", path = "./deployments" },
+    { access = "read", path = "./config" },
     { access = "read", path = "./test/relay/fixtures" },
     { access = "read", path = "./script/artifacts" },
 ]
+# Static test linking. Forge >= 1.x links test code dynamically by default and rewrites `new` of a src/ contract into
+# `deployCode`: then `vm.expectRevert` followed by a reverting `new` ends the test as a pass and silently skips every
+# later check in it (reproduced with Foundry 1.8.5). Halmos needs static linking too (profile below).
+dynamic_test_linking = false
 # Explicit remappings only: morpho-blue and openzeppelin ship their own nested forge-std copies,
 # auto-detection could otherwise pick the wrong one.
 auto_detect_remappings = false
