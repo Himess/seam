@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Build contracts/test/relay/fixtures/testnet_synthetic.json (SYNTHETIC test data).
+"""Build contracts/test/relay/fixtures/testnet_synthetic.json or mainnet_synthetic.json (SYNTHETIC test data).
 
-Two kinds of data, both derived from the real fixture testnet_recent.json:
+Testnet: two kinds of data, both derived from the real fixture testnet_recent.json:
 
 1. `mutations`: copies of the real header 4,488,000 with one targeted defect each (bit flips in the
    solution, nonce and merkle root; two swapped leaves; swapped subtrees; a duplicated half). The
@@ -14,7 +14,12 @@ Two kinds of data, both derived from the real fixture testnet_recent.json:
    (nBits 0x2007ffff), which the Testnet rule allows when a block's time is more than 450 s after
    its parent's. Every synthetic header is re-verified here (Equihash, PoW, expected nBits).
 
-Usage: python3 -I make_synthetic.py <solver-binary> <fixtures-dir>
+Mainnet (mainnet_synthetic.json, derived from mainnet_recent.json): the same one-defect mutations of
+the real header 3,497,560, and F1, a header on top of the real block 3,497,562 with the real child's
+time and nBits (the Mainnet retarget value) and a genuine Equihash solution whose hash is above the
+Mainnet target.
+
+Usage: python3 -I make_synthetic.py <solver-binary> <fixtures-dir> [testnet|mainnet]
 """
 
 import hashlib
@@ -90,6 +95,11 @@ def build_header(version, prev, merkle, commitments, time, bits, nonce, solution
 
 def main() -> int:
     solver, fixtures = sys.argv[1], sys.argv[2]
+    network = sys.argv[3] if len(sys.argv) > 3 else "testnet"
+    if network == "mainnet":
+        return mainnet(solver, fixtures)
+    if network != "testnet":
+        raise SystemExit(f"unknown network {network}")
     recent = json.load(open(os.path.join(fixtures, "testnet_recent.json")))
     raws = [bytes.fromhex(r[2:]) for r in recent["header_raws"]]
     heights = recent["header_heights"]
@@ -188,6 +198,85 @@ def main() -> int:
         "forks": forks,
     }
     out = os.path.join(fixtures, "testnet_synthetic.json")
+    with open(out, "w") as f:
+        json.dump(fixture, f, indent=1)
+        f.write("\n")
+    print(f"wrote {out}")
+    return 0
+
+
+def mainnet(solver, fixtures) -> int:
+    net = chk.MAINNET
+    recent = json.load(open(os.path.join(fixtures, "mainnet_recent.json")))
+    assert recent["network"] == net.name
+    raws = [bytes.fromhex(r[2:]) for r in recent["header_raws"]]
+    heights = recent["header_heights"]
+    bits_chain = list(recent["context_bits"]) + [chk.Header(r).bits for r in raws]
+    times_chain = list(recent["context_times"]) + [chk.Header(r).time for r in raws]
+
+    # --- 1. mutations of the real header M1 = 3,497,560 ---
+    muts = mutations(raws[0])
+    mutation_entries = {}
+    for label, raw in muts.items():
+        mutation_entries[label] = {"raw": le_hex(raw), "expected_equihash_error": equihash_kind(raw)}
+        print(f"mutation {label}: {mutation_entries[label]['expected_equihash_error']}")
+
+    # --- 2. F1 on top of the real block M3 = 3,497,562: the real child's time and nBits ---
+    m3 = chk.Header(raws[2])
+    child = chk.Header(raws[3])
+    ctx_len = len(recent["context_bits"])
+    upto = ctx_len + 3
+    p_bits = bits_chain[:upto][::-1]
+    p_times = times_chain[:upto][::-1]
+    height = heights[2] + 1
+    expected = chk.expected_bits(height, child.time, p_bits, p_times, net)
+    assert expected == child.bits, "the Mainnet retarget value is the real child's nBits"
+    merkle = hashlib.sha256(b"zecured relay synthetic merkle mainnet F1").digest()
+    commitments = hashlib.sha256(b"zecured relay synthetic commitments mainnet F1").digest()
+    prefix = struct.pack("<i", 4) + m3.hash + merkle + commitments + struct.pack("<II", child.time, child.bits)
+    nonce, solution, hash_display, log = solve(solver, prefix, child.bits, "fail", b"zecured-mainnet-F1")
+    raw = build_header(4, m3.hash, merkle, commitments, child.time, child.bits, nonce, solution)
+    h = chk.Header(raw)
+    assert h.hash[::-1].hex() == hash_display
+    assert equihash_kind(raw) == "Valid"
+    target = chk.to_target(child.bits)
+    assert int.from_bytes(h.hash, "little") > target
+    problems = chk.check_header(height, h, p_bits, p_times, equihash=True, net=net)
+    assert problems == ["hash above target"], problems
+    forks = {
+        "F1": {
+            "parent": "M3",
+            "height": height,
+            "median_time_past": chk.median(p_times[:11]),
+            "time": child.time,
+            "bits": child.bits,
+            "expected_bits": expected,
+            "target": hex(target),
+            "pow_valid": False,
+            "consensus_problems": problems,
+            "hash": le_hex(h.hash),
+            "hash_display": h.hash[::-1].hex(),
+            "raw": le_hex(raw),
+        }
+    }
+    print(f"fork F1: height {height} bits={child.bits:08x} problems={problems} ({log})")
+
+    fixture = {
+        "description": "SYNTHETIC relay test data derived from the real Zcash Mainnet fixture mainnet_recent.json. "
+        "Not real Zcash blocks.",
+        "network": net.name,
+        "mutations_of": {"height": heights[0], "hash": recent["header_hashes"][0]},
+        "mutations_note": f"Real header {heights[0]:,} with one defect each; expected_equihash_error from the "
+        "reference port (librustzcash equihash verify.rs) in tools/zcash_header_check.py",
+        "mutations": mutation_entries,
+        "forks_note": f"F1: a synthetic header on top of the real block {heights[2]:,} with the real child's time "
+        "and nBits (the Mainnet retarget value) and a genuine Equihash solution found by Tromp's solver "
+        "(equihash 0.3.0) via research/relay-synthetic-headers, whose hash is above the target; merkle root "
+        "and block commitments are arbitrary labelled values.",
+        "fork_base": {"height": heights[2], "hash": le_hex(m3.hash), "time": m3.time},
+        "forks": forks,
+    }
+    out = os.path.join(fixtures, "mainnet_synthetic.json")
     with open(out, "w") as f:
         json.dump(fixture, f, indent=1)
         f.write("\n")
