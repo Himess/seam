@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Independent reference checks for Zcash testnet block headers (standard library only).
+"""Independent reference checks for Zcash Testnet and Mainnet block headers (standard library only).
 
 This is a second, independent implementation of everything ZcashHeaderRelay.sol verifies. It is used
 to cross-check the fixtures and to compare against the Solidity code. It follows:
@@ -9,13 +9,15 @@ to cross-check the fixtures and to compare against the Solidity code. It follows
   * block hash / PoW: SHA256d of the 1487-byte header, compared as a little-endian integer with the
     target decoded from nBits (zcashd `CheckProofOfWork`, Zebra `difficulty_is_valid`);
   * difficulty and time rules: Zebra v7.0.0-rc.0 (commit 6d1e414d6f55e4180d0e47baaa934bf97d5b4fec)
-    `zebra-state/src/service/check/difficulty.rs` and `zebra-chain/src/parameters/network_upgrade.rs`
-    (ZIP 218: 25 s spacing and a 102-block averaging window from NU7; Testnet minimum-difficulty
-    gap 450 s before and after NU7).
+    `zebra-state/src/service/check/difficulty.rs`, `zebra-state/src/service/check.rs`,
+    `zebra-chain/src/parameters/network_upgrade.rs` and `network.rs` (ZIP 218: 25 s spacing and a
+    102-block averaging window from NU7; the Testnet minimum-difficulty gap is 450 s before and after
+    NU7 and does not exist on Mainnet; the 90-minute maximum time applies on Mainnet at every height).
+    The parameters of both networks, with sources, are in docs/ref/FACTS.md.
 
 CLI:
-  python3 -I zcash_header_check.py chain headers.jsonl [--equihash]   # consecutive headers, JSON lines
-  python3 -I zcash_header_check.py fixture fixture.json               # a relay test fixture
+  python3 -I zcash_header_check.py chain headers.jsonl [--network mainnet] [--equihash]  # JSON lines
+  python3 -I zcash_header_check.py fixture fixture.json   # a relay test fixture (network from the file)
 """
 
 import argparse
@@ -24,10 +26,7 @@ import json
 import struct
 import sys
 
-# --- Testnet parameters ------------------------------------------------------------------------
-NU7_ACTIVATION_TESTNET = 4_465_026
-TESTNET_MIN_DIFFICULTY_START_HEIGHT = 299_188
-TESTNET_MAX_TIME_START_HEIGHT = 653_606
+# --- Network-independent parameters ------------------------------------------------------------
 BLOCK_MAX_TIME_SINCE_MEDIAN = 90 * 60
 POW_MEDIAN_BLOCK_SPAN = 11
 POW_DAMPING_FACTOR = 4
@@ -71,8 +70,25 @@ def to_target(bits: int):
     return value
 
 
-POW_LIMIT = to_target(get_compact((1 << 251) - 1))  # Testnet PoWLimit, rounded through compact form
-POW_LIMIT_BITS = get_compact(POW_LIMIT)  # 0x2007ffff
+# --- Network parameters (Zebra v7.0.0-rc.0, ZIP 218, ZIP 259; docs/ref/FACTS.md) --------------------
+class Network:
+    def __init__(self, name, pow_limit_exact, min_difficulty_start, max_time_start, nu7):
+        self.name = name
+        # PoWLimit rounded through its compact form, as zcashd and Zebra use it
+        self.pow_limit = to_target(get_compact(pow_limit_exact))
+        self.pow_limit_bits = get_compact(self.pow_limit)
+        self.min_difficulty_start = min_difficulty_start  # None: no minimum-difficulty rule
+        self.max_time_start = max_time_start  # first height of the 90-minute rule
+        self.nu7 = nu7  # None: not activated (height unknown)
+
+
+TESTNET = Network("Zcash Testnet", (1 << 251) - 1, min_difficulty_start=299_188, max_time_start=653_606,
+                  nu7=4_465_026)
+MAINNET = Network("Zcash Mainnet", (1 << 243) - 1, min_difficulty_start=None, max_time_start=0, nu7=None)
+NETWORKS = {"testnet": TESTNET, "mainnet": MAINNET}
+NU7_ACTIVATION_TESTNET = TESTNET.nu7
+POW_LIMIT = TESTNET.pow_limit  # 0x07ffff << 232 (kept for make_synthetic.py)
+POW_LIMIT_BITS = TESTNET.pow_limit_bits  # 0x2007ffff
 
 
 def work(bits: int) -> int:
@@ -161,19 +177,23 @@ def equihash_check(header_prefix_140: bytes, solution: bytes) -> None:
 
 
 # --- Difficulty adjustment (Zebra v7.0.0-rc.0) ------------------------------------------------
-def averaging_window(height: int) -> int:
-    return 102 if height >= NU7_ACTIVATION_TESTNET else 17
+def is_nu7(height: int, net: Network = TESTNET) -> bool:
+    return net.nu7 is not None and height >= net.nu7
 
 
-def target_spacing(height: int) -> int:
-    return 25 if height >= NU7_ACTIVATION_TESTNET else 75
+def averaging_window(height: int, net: Network = TESTNET) -> int:
+    return 102 if is_nu7(height, net) else 17
 
 
-def min_difficulty_gap(height: int):
-    if height < TESTNET_MIN_DIFFICULTY_START_HEIGHT:
+def target_spacing(height: int, net: Network = TESTNET) -> int:
+    return 25 if is_nu7(height, net) else 75
+
+
+def min_difficulty_gap(height: int, net: Network = TESTNET):
+    if net.min_difficulty_start is None or height < net.min_difficulty_start:
         return None
-    multiplier = 18 if height >= NU7_ACTIVATION_TESTNET else 6
-    return target_spacing(height) * multiplier
+    multiplier = 18 if is_nu7(height, net) else 6
+    return target_spacing(height, net) * multiplier
 
 
 def median(values):
@@ -186,13 +206,13 @@ def trunc_div(a: int, b: int) -> int:
     return q if (a >= 0) == (b > 0) else -q
 
 
-def expected_bits(height: int, time: int, prev_bits, prev_times) -> int:
+def expected_bits(height: int, time: int, prev_bits, prev_times, net: Network = TESTNET) -> int:
     """prev_bits / prev_times: the previous blocks' nBits and times, newest first (index 0 = parent)."""
-    gap = min_difficulty_gap(height)
+    gap = min_difficulty_gap(height, net)
     if gap is not None and time - prev_times[0] > gap:
-        return POW_LIMIT_BITS
-    w = averaging_window(height)
-    awt = w * target_spacing(height)
+        return net.pow_limit_bits
+    w = averaging_window(height, net)
+    awt = w * target_spacing(height, net)
     targets = [to_target(b) for b in prev_bits[:w]]
     quotients = sum(t // w for t in targets)
     remainders = sum(t % w for t in targets)
@@ -203,32 +223,32 @@ def expected_bits(height: int, time: int, prev_bits, prev_times) -> int:
     lo = awt * (100 - POW_MAX_ADJUST_UP_PERCENT) // 100
     hi = awt * (100 + POW_MAX_ADJUST_DOWN_PERCENT) // 100
     bounded = max(lo, min(hi, damped))
-    threshold = min(POW_LIMIT, (mean // awt) * bounded)
+    threshold = min(net.pow_limit, (mean // awt) * bounded)
     return get_compact(threshold)
 
 
-def check_time(height: int, time: int, prev_times):
+def check_time(height: int, time: int, prev_times, net: Network = TESTNET):
     mtp = median(prev_times[:POW_MEDIAN_BLOCK_SPAN])
     if time <= mtp:
         return "TimeTooEarly"
-    if height >= TESTNET_MAX_TIME_START_HEIGHT and time > mtp + BLOCK_MAX_TIME_SINCE_MEDIAN:
+    if height >= net.max_time_start and time > mtp + BLOCK_MAX_TIME_SINCE_MEDIAN:
         return "TimeTooLate"
     return None
 
 
-def check_header(height: int, header: Header, prev_bits, prev_times, equihash: bool = True):
+def check_header(height: int, header: Header, prev_bits, prev_times, equihash: bool = True, net: Network = TESTNET):
     """Returns a list of problems (empty when the header passes every check)."""
     problems = []
     if header.version < 4:
         problems.append("version")
-    t = check_time(height, header.time, prev_times)
+    t = check_time(height, header.time, prev_times, net)
     if t:
         problems.append(t)
-    exp = expected_bits(height, header.time, prev_bits, prev_times)
+    exp = expected_bits(height, header.time, prev_bits, prev_times, net)
     if exp != header.bits:
         problems.append(f"bits {header.bits:08x} != expected {exp:08x}")
     target = to_target(header.bits)
-    if target is None or target > POW_LIMIT:
+    if target is None or target > net.pow_limit:
         problems.append("invalid target")
     elif int.from_bytes(header.hash, "little") > target:
         problems.append("hash above target")
@@ -241,7 +261,7 @@ def check_header(height: int, header: Header, prev_bits, prev_times, equihash: b
 
 
 # --- CLI -----------------------------------------------------------------------------------------
-def check_chain(path: str, equihash: bool) -> int:
+def check_chain(path: str, equihash: bool, net: Network = TESTNET) -> int:
     items = [json.loads(line) for line in open(path)]
     headers = [Header(bytes.fromhex(it["raw"])) for it in items]
     bad = 0
@@ -255,24 +275,25 @@ def check_chain(path: str, equihash: bool) -> int:
             print(f"{it['height']}: linkage")
             bad += 1
         height = it["height"]
-        need = averaging_window(height) + POW_MEDIAN_BLOCK_SPAN
+        need = averaging_window(height, net) + POW_MEDIAN_BLOCK_SPAN
         if i < need:
             continue
         prev = headers[max(0, i - span) : i][::-1]
-        problems = check_header(height, h, [p.bits for p in prev], [p.time for p in prev], equihash)
-        if h.bits == POW_LIMIT_BITS:
+        problems = check_header(height, h, [p.bits for p in prev], [p.time for p in prev], equihash, net)
+        if h.bits == net.pow_limit_bits:
             min_diff += 1
         if problems:
             bad += 1
             print(f"{height}: {problems}")
     checked = len(items) - min(len(items), 17 + POW_MEDIAN_BLOCK_SPAN)
-    print(f"checked {len(items)} headers ({items[0]['height']}..{items[-1]['height']}), "
+    print(f"{net.name}: checked {len(items)} headers ({items[0]['height']}..{items[-1]['height']}), "
           f"{min_diff} minimum-difficulty blocks, {bad} problems")
     return 1 if bad else 0
 
 
 def check_fixture(path: str) -> int:
     fx = json.load(open(path))
+    net = {n.name: n for n in NETWORKS.values()}[fx.get("network", TESTNET.name)]
     ctx_bits = [int(b) for b in fx["context_bits"]]
     ctx_times = list(fx["context_times"])
     ctx_heights = list(fx["context_heights"])
@@ -292,14 +313,15 @@ def check_fixture(path: str) -> int:
         if h.prev != prev_hash:
             print(f"{height}: linkage")
             bad += 1
-        problems = check_header(height, h, bits[::-1], times[::-1], equihash=True)
+        problems = check_header(height, h, bits[::-1], times[::-1], equihash=True, net=net)
         if problems:
             print(f"{height}: {problems}")
             bad += 1
         bits.append(h.bits)
         times.append(h.time)
         prev_hash = h.hash
-    print(f"{path}: {len(fx['header_raws'])} headers after checkpoint {fx['checkpoint_height']}, {bad} problems")
+    print(f"{path} ({net.name}): {len(fx['header_raws'])} headers after checkpoint {fx['checkpoint_height']}, "
+          f"{bad} problems")
     return 1 if bad else 0
 
 
@@ -308,12 +330,13 @@ def main() -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("chain")
     c.add_argument("path")
+    c.add_argument("--network", choices=sorted(NETWORKS), default="testnet")
     c.add_argument("--equihash", action="store_true")
     f = sub.add_parser("fixture")
     f.add_argument("path")
     args = ap.parse_args()
     if args.cmd == "chain":
-        return check_chain(args.path, args.equihash)
+        return check_chain(args.path, args.equihash, NETWORKS[args.network])
     return check_fixture(args.path)
 
 
