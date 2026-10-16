@@ -114,6 +114,13 @@ abstract contract RelayFixtures is Test {
         vm.warp(_time(header) + 60);
     }
 
+    /// Like `_warpTo`, but never back in time: on a fork at a later block (the mainnet rehearsal) the chain's clock is
+    /// already past the headers, and contracts deployed there must not see time run backwards.
+    function _warpForward(bytes memory header) internal {
+        uint256 t = _time(header) + 60;
+        if (t > block.timestamp) vm.warp(t);
+    }
+
     function _synthetic() internal view returns (string memory) {
         return vm.readFile(SYNTHETIC);
     }
