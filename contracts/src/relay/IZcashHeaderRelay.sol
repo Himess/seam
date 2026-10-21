@@ -3,9 +3,14 @@ pragma solidity 0.8.28;
 
 import {ZcashEquihash} from "./ZcashEquihash.sol";
 
+/// @dev `IZcashHeaderRelay.networkId` of a relay that follows Zcash Testnet.
+bytes32 constant ZCASH_TESTNET = keccak256("zcash-testnet");
+/// @dev `IZcashHeaderRelay.networkId` of a relay that follows Zcash Mainnet.
+bytes32 constant ZCASH_MAINNET = keccak256("zcash-mainnet");
+
 /// @title IZcashHeaderRelay
-/// @notice A Zcash Testnet block-header relay: proof-of-work-verified headers from a trusted checkpoint, best chain
-///         by cumulative work.
+/// @notice A Zcash block-header relay for one network (`networkId`): proof-of-work-verified headers from a trusted
+///         checkpoint, best chain by cumulative work.
 /// @dev Block hashes are SHA256d of the 1487-byte header in internal byte order (the bytes32 that appears in the
 ///      next header's hashPrevBlock). Block explorers display them byte-reversed.
 interface IZcashHeaderRelay {
@@ -31,6 +36,11 @@ interface IZcashHeaderRelay {
     ///         the blocks of the previous best chain above `forkHeight` left the best chain.
     event BestChainUpdated(bytes32 indexed newTip, uint256 newHeight, bytes32 indexed previousTip, uint256 forkHeight);
 
+    error InvalidNetworkId();
+    error InvalidPowLimit();
+    error InvalidMinDifficultyRule();
+    error InvalidDifficultyAdjustment();
+    error InvalidMinCheckpointHeight();
     error InvalidCheckpoint();
     error InvalidContextLength();
     error InvalidContextBits(uint256 index);
@@ -45,6 +55,11 @@ interface IZcashHeaderRelay {
     error BadDifficultyBits(uint256 bits, uint256 expected);
     error InvalidEquihashSolution(ZcashEquihash.Result result);
     error HashAboveTarget(bytes32 blockHash, uint256 target);
+
+    /// @notice The Zcash network whose consensus rules this relay applies: `ZCASH_TESTNET` or `ZCASH_MAINNET` for the
+    ///         public networks. Consumers check it so that a relay of one network is never paired with another
+    ///         network's proofs (a Testnet relay with a Mainnet image id).
+    function networkId() external view returns (bytes32);
 
     /// @notice Verifies and stores one header (1487 bytes). Reverts if any check fails.
     function submitHeader(bytes calldata header) external returns (bytes32 blockHash);

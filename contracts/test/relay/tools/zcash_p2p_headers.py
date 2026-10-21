@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fetch raw Zcash testnet block headers from a public peer over the Zcash P2P protocol.
+"""Fetch raw Zcash Testnet or Mainnet block headers from public peers over the Zcash P2P protocol.
 
 Read-only: the script performs the version/verack handshake, sends `getheaders` and parses the
 `headers` replies. It never relays anything. Standard library only.
@@ -13,7 +13,10 @@ Every header is checked before it is written:
 
 Usage:
   python3 -I zcash_p2p_headers.py --from-hash <display hash of block h-1> --from-height <h-1> \
-      --count N --out headers.jsonl [--peer HOST:PORT ...]
+      --count N --out headers.jsonl [--network mainnet] [--peer HOST:PORT ...]
+
+Mainnet: on 2026-10-15 only Zakura peers answered `getheaders`; the Zebra peers closed the connection on
+it, so the tool may go through many peers before one serves the headers.
 
 Output: one JSON object per line: {"height", "hash" (display order), "raw" (hex, 1487 bytes)}.
 """
@@ -27,11 +30,31 @@ import struct
 import sys
 import time
 
-TESTNET_MAGIC = bytes.fromhex("fa1af9bf")
-TESTNET_PORT = 18233
-# ZIP 259: MIN_NETWORK_PROTOCOL_VERSION (NU7) on Testnet; Zebra 7.0.0-rc.0 advertises the same value.
+# Network magic, default port and DNS seeders, from Zebra v7.0.0-rc.0 (commit 6d1e414d6f55e4180d0e47baaa934bf97d5b4fec):
+# zebra-chain/src/parameters/constants.rs (`magics`), zebra-chain/src/parameters/network.rs (`default_port`) and
+# zebra-network/src/config.rs (`DEFAULT_MAINNET_PEERS`; for Testnet the two seeders this tool always used).
+NETWORKS = {
+    "testnet": {
+        "magic": bytes.fromhex("fa1af9bf"),
+        "port": 18233,
+        "seeders": ["dnsseed.testnet.z.cash", "testnet.seeder.zfnd.org"],
+    },
+    "mainnet": {
+        "magic": bytes.fromhex("24e92764"),
+        "port": 8233,
+        "seeders": [
+            "dnsseed.z.cash",
+            "dnsseed.str4d.xyz",
+            "mainnet.seeder.zfnd.org",
+            "mainnet.seeder.shieldedinfra.net",
+            "seeder.zec.rocks",
+        ],
+    },
+}
+# Zebra 7.0.0-rc.0 advertises CURRENT_NETWORK_PROTOCOL_VERSION = 170180 on both networks
+# (zebra-network/src/constants.rs). It is ZIP 259's NU7 version on Testnet; Mainnet peers require at
+# least NU6.3's 170160 (zebra-network/src/protocol/external/types.rs `min_specified_for_upgrade`).
 PROTOCOL_VERSION = 170180
-SEEDERS = ["dnsseed.testnet.z.cash", "testnet.seeder.zfnd.org"]
 HEADER_PREFIX_LEN = 140
 SOLUTION_LEN = 1344
 HEADER_LEN = HEADER_PREFIX_LEN + 3 + SOLUTION_LEN  # 1487
@@ -62,9 +85,9 @@ def read_varint(buf: bytes, pos: int):
     return struct.unpack_from("<Q", buf, pos + 1)[0], pos + 9
 
 
-def message(command: str, payload: bytes) -> bytes:
+def message(magic: bytes, command: str, payload: bytes) -> bytes:
     cmd = command.encode("ascii").ljust(12, b"\x00")
-    return TESTNET_MAGIC + cmd + struct.pack("<I", len(payload)) + sha256d(payload)[:4] + payload
+    return magic + cmd + struct.pack("<I", len(payload)) + sha256d(payload)[:4] + payload
 
 
 def net_addr(ip: str = "0.0.0.0", port: int = 0) -> bytes:
@@ -73,8 +96,8 @@ def net_addr(ip: str = "0.0.0.0", port: int = 0) -> bytes:
 
 
 class Peer:
-    def __init__(self, host: str, port: int, timeout: float = 20.0):
-        self.host, self.port = host, port
+    def __init__(self, host: str, port: int, magic: bytes, timeout: float = 20.0):
+        self.host, self.port, self.magic = host, port, magic
         self.sock = socket.create_connection((host, port), timeout=timeout)
         self.sock.settimeout(timeout)
         self.buf = b""
@@ -82,12 +105,12 @@ class Peer:
         self.remote_agent = None
 
     def send(self, command: str, payload: bytes = b"") -> None:
-        self.sock.sendall(message(command, payload))
+        self.sock.sendall(message(self.magic, command, payload))
 
     def recv_message(self):
         while True:
             if len(self.buf) >= 24:
-                if self.buf[:4] != TESTNET_MAGIC:
+                if self.buf[:4] != self.magic:
                     raise RuntimeError("bad network magic from peer")
                 length = struct.unpack_from("<I", self.buf, 16)[0]
                 if length > 8_000_000:
@@ -173,16 +196,17 @@ def parse_headers(body: bytes):
     return out
 
 
-def candidate_peers(explicit):
+def candidate_peers(explicit, network):
     if explicit:
         for p in explicit:
             host, _, port = p.rpartition(":")
             yield host, int(port)
         return
+    port = network["port"]
     addrs = []
-    for seeder in SEEDERS:
+    for seeder in network["seeders"]:
         try:
-            for info in socket.getaddrinfo(seeder, TESTNET_PORT, socket.AF_INET, socket.SOCK_STREAM):
+            for info in socket.getaddrinfo(seeder, port, socket.AF_INET, socket.SOCK_STREAM):
                 addrs.append(info[4][0])
         except OSError:
             pass
@@ -191,7 +215,7 @@ def candidate_peers(explicit):
     for a in addrs:
         if a not in seen:
             seen.add(a)
-            yield a, TESTNET_PORT
+            yield a, port
 
 
 def main() -> int:
@@ -200,13 +224,15 @@ def main() -> int:
     ap.add_argument("--from-height", required=True, type=int, help="height of that block")
     ap.add_argument("--count", required=True, type=int)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--peer", action="append", help="HOST:PORT (repeatable); default: testnet DNS seeders")
+    ap.add_argument("--network", choices=sorted(NETWORKS), default="testnet")
+    ap.add_argument("--peer", action="append", help="HOST:PORT (repeatable); default: the network's DNS seeders")
     args = ap.parse_args()
+    network = NETWORKS[args.network]
 
     locator = bytes.fromhex(args.from_hash)[::-1]
     height = args.from_height
     fetched = []
-    peers = candidate_peers(args.peer)
+    peers = candidate_peers(args.peer, network)
     peer = None
     used = []
     while len(fetched) < args.count:
@@ -217,10 +243,10 @@ def main() -> int:
                 print("ran out of peers", file=sys.stderr)
                 return 1
             try:
-                peer = Peer(host, port)
+                peer = Peer(host, port, network["magic"])
                 peer.handshake()
-                used.append(f"{host}:{port} (protocol {peer.remote_version}, {peer.remote_agent})")
-                print(f"connected to {used[-1]}", file=sys.stderr)
+                described = f"{host}:{port} (protocol {peer.remote_version}, {peer.remote_agent})"
+                print(f"connected to {described}", file=sys.stderr)
             except Exception as exc:  # noqa: BLE001 - try the next peer
                 print(f"peer {host}:{port} failed: {exc}", file=sys.stderr)
                 peer = None
@@ -243,6 +269,8 @@ def main() -> int:
             )
             peer = None
             continue
+        if described not in used:
+            used.append(described)  # only peers whose headers were kept
         for raw in raws:
             if raw[4:36] != locator:
                 raise SystemExit(f"linkage error at height {height + 1}")
