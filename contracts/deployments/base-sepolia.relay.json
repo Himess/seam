@@ -1,5 +1,10 @@
 {
-  "ZcashHeaderRelay": "0xab07317f7B9390394271D9c03FE2E912C0E58FA5",
-  "checkpointHash": "0x2881ba3b5af863bd160a81450b41f63f0054f0328bc202716450f213df2c0000",
-  "checkpointHeight": 4490100
+  "ZcashHeaderRelay": "0xEc34aA21cDe1366b397a99A4d90fc6B2f02cFaEa",
+  "chainId": 84532,
+  "checkpointHash": "0x34490f2abdcda0c0ae95ea8b8f39ad1715581717f7f5654ad4f535ebd41d0000",
+  "checkpointHeight": 4547001,
+  "networkId": "0x9319c941cc6f14fa909d37052da40b85687db2512b320009fcf27cb3815e1e39",
+  "nu7ActivationHeight": 4465026,
+  "parameters": "config/relay-testnet.json",
+  "zcashNetwork": "zcash-testnet"
 }

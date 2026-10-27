@@ -210,11 +210,14 @@ contract ZcashHeaderRelayParamsTest is RelayFixtures {
         DeployRelay script = new DeployRelay();
         _deployFromConfig(script, "config/relay-testnet.json", RECENT);
         _deployFromConfig(script, "config/relay-mainnet.json", MAINNET_RECENT);
-        // The Base Sepolia checkpoint file of the deployed Testnet relay still loads.
+        // The Base Sepolia checkpoint file of the deployed Testnet relay still loads, and it is that relay's checkpoint
+        // (its record, deployments/base-sepolia.relay.json, names it).
         (,, string memory display) = script.loadParams("config/relay-testnet.json");
         DeployRelay.Checkpoint memory cp =
             script.loadCheckpoint("deployments/base-sepolia.relay-checkpoint.json", display);
-        assertEq(cp.height, 4_490_100);
+        string memory record = vm.readFile("deployments/base-sepolia.relay.json");
+        assertEq(cp.height, vm.parseJsonUint(record, ".checkpointHeight"));
+        assertEq(cp.hash, vm.parseJsonBytes32(record, ".checkpointHash"));
         assertEq(cp.times.length, 113);
     }
 
