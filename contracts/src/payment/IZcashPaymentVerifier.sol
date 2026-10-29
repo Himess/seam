@@ -6,7 +6,7 @@ struct ZcashPayment {
     /// @dev Consensus branch ID of the epoch the proof walked.
     uint32 branchId;
     /// @dev SHA-256d of header T, internal byte order (the relay's block hash). The payment is in a block of T's epoch
-    ///      at or below T.
+    ///      before T: T's history commitment covers the blocks below it.
     bytes32 anchor;
     /// @dev The reference the note's memo names (`seam1:` and its 64 lowercase hex digits).
     bytes32 paymentRef;

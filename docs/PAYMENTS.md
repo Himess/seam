@@ -43,7 +43,9 @@ abi.encode(uint8 version = 1, uint32 branchId, bytes32 anchor, bytes32 paymentRe
 | the receiver commitment `keccak256(salt32 \|\| receiver43)` | the note commitment and the nullifier |
 | the value, in zatoshi, and the branch id | the receiver, its address and viewing key, and the salt |
 
-The value is public: an app whose amounts must stay private needs another design.
+The value is public: an app whose amounts must stay private needs another design. The salt must be fresh, random and
+secret for each payment: a reused salt and receiver link payments on chain, and a guessable salt lets anyone test
+candidate receivers against the commitment.
 
 ## 3. What you have to trust
 
@@ -57,7 +59,9 @@ The value is public: an app whose amounts must stay private needs another design
 - **The relay.** The anchor must be on its best chain with enough work on top
   ([INTEGRATING.md](INTEGRATING.md) § 4). The relay checks every header, but someone has to feed it.
 - **The statement.** It checks the rules above and nothing else: no proof of work (the relay does) and no Halo 2 proof
-  or signature (Zcash's consensus did when the block was mined).
+  or signature (Zcash's consensus did, when the block was mined into the chain the relay follows). A chain an attacker
+  mines in private can carry any transaction, so the work an app requires on top of an anchor must outweigh what all
+  its open payments are worth together: one deep enough reorganisation could fake a payment for each of them.
 
 ## 4. How to pay
 
@@ -70,8 +74,9 @@ ZIP 302 reads a memo whose first byte is 0xF4 or less as UTF-8 text, so wallets 
 it typed by hand. A ZIP 321 payment URI carries it in its `memo` parameter: the memo's bytes in base64url without
 padding. `seam memo <paymentRef> --address <ua> --amount <ZEC>` prints both.
 
-The payment must be Ironwood-only: a wallet that adds a transparent change output, or spends from another pool,
-makes a transaction the statement refuses.
+The payment must be Ironwood-only: a wallet that adds a transparent change output, or spends from or pays into another
+pool (the Orchard pool uses the same address format), makes a transaction the statement refuses. And the whole amount
+must arrive in one note: two notes of half the amount are two payments of half.
 
 ## 5. Who can prove
 
@@ -87,12 +92,17 @@ Proving runs on any machine with the witness; a witness should never leave a mac
 
 `ZcashPaymentVerifier.verify(journal, seal)` returns the payment and the work on top of its anchor. It reverts unless
 the journal is a version 1 journal of a branch id the verifier allows, the router verifies the seal for the pinned
-image id, and the anchor is on the relay's best chain. Finality is the app's choice:
+image id, and the anchor is on the relay's best chain. It is stateless: it accepts the same proof any number of times,
+and one payment under many anchors, so an app binds each `paymentRef` to one obligation and settles it once. Finality
+is the app's choice:
 - **Work, not blocks:** require `anchorWork >= minWork`, fixed at deployment ([INTEGRATING.md](INTEGRATING.md) § 4).
 - **A pending window:** settle only after `finalizeDepth` more headers and `finalizeDelay` seconds, and only if the
   anchor is still final then.
 - **Reorganisations:** drop a pending settlement whose anchor left the best chain; anyone can prove again.
-- **A deadline:** refund the payer of the EVM side if no settlement is pending when it passes.
+- **A deadline, judged on the Zcash side:** a payment counts if its anchor's header time is no later than the
+  deadline (the payment's block comes before the anchor). Give provers a grace period after the deadline, and after a
+  dropped settlement, so a slow proof or a lagging relay never costs a payer who paid in time; refund the EVM side only
+  once that window has closed with nothing pending.
 
 `ShieldedPaymentEscrow` is an example of all four.
 

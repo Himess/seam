@@ -8,9 +8,10 @@ import {IZcashPaymentVerifier, ZcashPayment} from "./IZcashPaymentVerifier.sol";
 /// @title ZcashPaymentVerifier
 /// @notice Checks Seam payment proofs for one guest and one relay (docs/PAYMENTS.md). No owner and no upgrade: the
 ///         relay, the router, the selector, the image id and the allowed branch ids are fixed at deployment.
-/// @dev The guest proves the statement of crates/seam-payment for one Zcash network: the constructor checks that the
-///      relay follows that network, so a Testnet relay never vouches for a Mainnet guest's anchor, or the reverse. The
-///      statement allows the same NU7 branch id on both networks; the relay is what tells them apart.
+/// @dev The deployer names the guest's Zcash network (`networkId_`) and the constructor checks that the relay follows
+///      it. The statement itself separates the networks only by their epochs, and both allow NU7's branch id, so what
+///      tells a Testnet payment from a Mainnet one is the relay its anchor must be on. `verify` is stateless: it accepts
+///      the same proof any number of times, so an app binds each `paymentRef` to one obligation and settles it once.
 contract ZcashPaymentVerifier is IZcashPaymentVerifier {
     /// @notice Length of a payment journal: six ABI words.
     uint256 public constant JOURNAL_LENGTH = 6 * 32;
