@@ -1,0 +1,19 @@
+name: Bug report
+description: Something doesn't work as documented. If the relay accepts or refuses a header wrongly, report it privately instead.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: Commands, the relay's address and network, the commit.
+  - type: input
+    id: version
+    attributes:
+      label: Seam version or commit
