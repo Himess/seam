@@ -24,10 +24,23 @@ hex = "0.4"
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread"] }
 
+# The zkVM subcommands, behind the `zkvm` feature: RISC Zero's host, the version Zecured's tier2 host proved with, and
+# the embedded guest. risc0-build does not build on Windows.
+risc0-zkvm = { version = "=3.0.6", optional = true }
+seam-zkvm-methods = { path = "../../zkvm/methods", optional = true }
+bincode = { version = "1", optional = true }
+# Only for `shrink-wrap` (the `cuda` feature): the version risc0-zkvm 3.0.6 uses.
+risc0-groth16 = { version = "=3.0.5", optional = true, default-features = false }
+
 [features]
-# The Mainnet build: the statement proves Mainnet payments (the NU6.3 and NU7 epochs). Without it, Testnet (NU7). One
-# build proves on one network.
-mainnet = ["seam-payment/mainnet"]
+# The Mainnet build: the statement, and with `zkvm` the embedded guest, prove Mainnet payments (the NU6.3 and NU7
+# epochs). Without it, Testnet (NU7). One build proves on one network.
+mainnet = ["seam-payment/mainnet", "seam-zkvm-methods?/mainnet"]
+# execute, prove, groth16, seal, image-id, export-elf and parity.
+zkvm = ["dep:risc0-zkvm", "dep:seam-zkvm-methods", "dep:bincode", "seam-payment/k4"]
+# Proves on an NVIDIA GPU (needs the CUDA toolkit to build), and adds p254 and shrink-wrap: the Groth16 wrap in two
+# processes, through the `risc0-groth16` rzup component instead of Docker.
+cuda = ["zkvm", "risc0-zkvm/cuda", "dep:risc0-groth16", "risc0-groth16/cuda"]
 
 [dev-dependencies]
 seam-payment = { path = "../seam-payment", features = ["k4"] }

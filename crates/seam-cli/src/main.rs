@@ -5,6 +5,8 @@
 //! seam memo <paymentRef> [--address <ua> --amount <ZEC>]     the memo text, and a ZIP 321 payment URI
 //! seam witness --txid <id> (--opening <file> | --ufvk-file <file>) --salt-file <file> --anchor <height>
 //!              --out <witness.json>                            a witness, checked with the statement
+//! seam execute | prove | groth16 | seal | image-id | export-elf | parity
+//!                                                              with the `zkvm` feature: the RISC Zero guest
 //! ```
 //!
 //! Secrets (an opening, a viewing key, a salt) come from files, never from the command line. `seam` prints counts,
@@ -20,6 +22,8 @@ use seam_chain::ZcashNetwork;
 
 mod memo;
 mod witness;
+#[cfg(feature = "zkvm")]
+mod zkvm;
 
 #[derive(Parser)]
 #[command(
@@ -39,6 +43,9 @@ enum Command {
     /// Builds the witness of a payment from chain data and its opening (the payer's, or found with the receiver's
     /// viewing key), and checks it with the statement.
     Witness(witness::WitnessArgs),
+    #[cfg(feature = "zkvm")]
+    #[command(flatten)]
+    Zkvm(zkvm::ZkvmCommand),
 }
 
 /// The network a command works on: this build's, which `--network` may only confirm.
@@ -92,13 +99,16 @@ fn run(cli: Cli) -> Result<()> {
             .build()
             .context("start an async runtime")?
             .block_on(witness::run(args)),
+        // Outside any async runtime: RISC Zero's provers may start their own.
+        #[cfg(feature = "zkvm")]
+        Command::Zkvm(command) => zkvm::run(command),
     }
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    // Note decryption and the statement run on a thread with a larger stack than Windows gives the main
-    // thread (1 MiB).
+    // Note decryption, the statement and the zkVM host run on a thread with a larger stack than Windows gives the
+    // main thread (1 MiB).
     let outcome = std::thread::Builder::new().stack_size(16 << 20).spawn(move || run(cli)).map(|t| t.join());
     match outcome {
         Ok(Ok(Ok(()))) => ExitCode::SUCCESS,
