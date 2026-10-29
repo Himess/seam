@@ -63,3 +63,87 @@ fn witness_refuses_what_it_cannot_build() {
     let missing = seam(&[&base[..], &["--opening", "no-such-opening.json"]].concat());
     assert!(!missing.status.success() && stderr(&missing).contains("read salt"));
 }
+
+fn temp_dir() -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("seam-cli-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+/// The txid comes from --txid or from the opening `seam pay` wrote, and never both differing; nothing is read from
+/// the network before that is settled.
+#[test]
+fn witness_takes_the_txid_from_the_opening() {
+    let dir = temp_dir();
+    let salt = dir.join("salt.txt");
+    std::fs::write(&salt, "5a".repeat(32)).unwrap();
+    let opening = |txid: Option<&str>| {
+        let path = dir.join(format!("opening-{}.json", txid.map_or(0, str::len)));
+        let mut json = serde_json::json!({
+            "action_index": 1,
+            "receiver": "00".repeat(43),
+            "value": 1,
+            "rseed": "42".repeat(32),
+        });
+        if let Some(t) = txid {
+            json["txid"] = t.into();
+        }
+        std::fs::write(&path, json.to_string()).unwrap();
+        path.display().to_string()
+    };
+    let salt = salt.display().to_string();
+    let run = |extra: &[&str]| {
+        seam(
+            &[
+                &["witness", "--salt-file", &salt, "--anchor", "1", "--out", "w.json"][..],
+                extra,
+            ]
+            .concat(),
+        )
+    };
+    let none = run(&["--opening", &opening(None)]);
+    assert!(stderr(&none).contains("give --txid"), "{}", stderr(&none));
+    let other = run(&["--opening", &opening(Some(&"ab".repeat(32))), "--txid", REF]);
+    assert!(stderr(&other).contains("not the transaction the opening was kept for"), "{}", stderr(&other));
+    // With a txid either way, the next check refuses: block 1 is in no epoch a payment proof walks.
+    for extra in [
+        vec!["--opening", &opening(Some(REF))],
+        vec!["--opening", &opening(None), "--txid", REF],
+    ] {
+        let out = run(&extra);
+        assert!(stderr(&out).contains("no epoch"), "{}", stderr(&out));
+    }
+}
+
+/// `pay` is Testnet's only, names its payment completely, and creates a wallet only with an address file to write.
+#[test]
+fn pay_refuses_what_it_cannot_send() {
+    let dir = temp_dir();
+    let wallet = dir.join("wallet.json").display().to_string();
+    let payment = [
+        "pay",
+        "--wallet",
+        &wallet,
+        "--to",
+        "utest1",
+        "--zat",
+        "1",
+        "--ref",
+        REF,
+        "--opening",
+        "o.json",
+    ];
+    let incomplete = seam(&payment[..payment.len() - 2]);
+    assert!(!incomplete.status.success() && stderr(&incomplete).contains("--opening"));
+    let no_address_file = seam(&["pay", "--wallet", &wallet, "--new-wallet"]);
+    assert!(!no_address_file.status.success() && stderr(&no_address_file).contains("--address-out"));
+    let both = seam(&[&payment[..], &["--new-wallet", "--address-out", "a.txt"]].concat());
+    assert!(!both.status.success() && stderr(&both).contains("cannot be used with"));
+    if cfg!(not(feature = "mainnet")) {
+        let mainnet = seam(&[&payment[..], &["--network", "mainnet"]].concat());
+        assert!(!mainnet.status.success() && stderr(&mainnet).contains("needs a build"));
+    }
+    let bad_receiver = seam(&payment);
+    assert!(!bad_receiver.status.success() && stderr(&bad_receiver).contains("--to"));
+    assert!(!std::path::Path::new(&wallet).exists() && !std::path::Path::new("o.json").exists());
+}

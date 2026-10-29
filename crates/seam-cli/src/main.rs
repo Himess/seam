@@ -5,6 +5,8 @@
 //! seam memo <paymentRef> [--address <ua> --amount <ZEC>]     the memo text, and a ZIP 321 payment URI
 //! seam witness --txid <id> (--opening <file> | --ufvk-file <file>) --salt-file <file> --anchor <height>
 //!              --out <witness.json>                            a witness, checked with the statement
+//! seam pay --wallet <file> --to <ua> --zat <n> --ref <paymentRef> --opening <out.json>
+//!                                                              a Testnet payment from a disposable wallet
 //! seam execute | prove | groth16 | seal | image-id | export-elf | parity
 //!                                                              with the `zkvm` feature: the RISC Zero guest
 //! ```
@@ -21,6 +23,7 @@ use clap::{Parser, Subcommand};
 use seam_chain::ZcashNetwork;
 
 mod memo;
+mod pay;
 mod witness;
 #[cfg(feature = "zkvm")]
 mod zkvm;
@@ -43,6 +46,9 @@ enum Command {
     /// Builds the witness of a payment from chain data and its opening (the payer's, or found with the receiver's
     /// viewing key), and checks it with the statement.
     Witness(witness::WitnessArgs),
+    /// Pays from a disposable Testnet wallet: one Ironwood note with the memo of a paymentRef and `ovk = None`, its
+    /// opening and txid kept in a file. Creates the wallet with --new-wallet.
+    Pay(pay::PayArgs),
     #[cfg(feature = "zkvm")]
     #[command(flatten)]
     Zkvm(zkvm::ZkvmCommand),
@@ -99,6 +105,7 @@ fn run(cli: Cli) -> Result<()> {
             .build()
             .context("start an async runtime")?
             .block_on(witness::run(args)),
+        Command::Pay(args) => pay::run(args),
         // Outside any async runtime: RISC Zero's provers may start their own.
         #[cfg(feature = "zkvm")]
         Command::Zkvm(command) => zkvm::run(command),

@@ -81,6 +81,17 @@ pub fn parse_zec(s: &str) -> Result<Zatoshis> {
     Zatoshis::from_u64(zatoshi).map_err(|_| anyhow!("more ZEC than there will ever be"))
 }
 
+/// The Orchard-protocol receiver of unified address `address` of Zcash `network`, which an Ironwood payment pays
+/// (receivers are scoped to the Orchard protocol, not to a pool), and whether the address has others as well.
+pub fn ironwood_receiver(network: ZcashNetwork, address: &str) -> Result<(orchard::Address, bool)> {
+    let ua = UnifiedAddress::decode(&network.params(), address.trim())
+        .map_err(|e| anyhow!("not a unified address of Zcash {network}: {e}"))?;
+    let Some(receiver) = ua.orchard() else {
+        bail!("the address has no Orchard-protocol receiver, which an Ironwood payment pays");
+    };
+    Ok((*receiver, ua.has_sapling() || ua.has_transparent()))
+}
+
 /// The ZIP 321 URI of a payment of `amount` to unified address `address` of Zcash `network`, with the memo of
 /// `payment_ref` (the memo's bytes in base64url without padding), and whether the address has receivers besides its
 /// Orchard-protocol one (which an Ironwood payment pays).
@@ -90,12 +101,7 @@ pub fn payment_uri(
     amount: Zatoshis,
     payment_ref: &[u8; 32],
 ) -> Result<(String, bool)> {
-    let ua = UnifiedAddress::decode(&network.params(), address.trim())
-        .map_err(|e| anyhow!("not a unified address of Zcash {network}: {e}"))?;
-    if !ua.has_orchard() {
-        bail!("the address has no Orchard-protocol receiver, which an Ironwood payment pays");
-    }
-    let other_receivers = ua.has_sapling() || ua.has_transparent();
+    let (_, other_receivers) = ironwood_receiver(network, address)?;
     let recipient = ZcashAddress::try_from_encoded(address.trim()).map_err(|e| anyhow!("the address: {e}"))?;
     let memo = MemoBytes::from_bytes(memo_text(payment_ref).as_bytes()).map_err(|e| anyhow!("the memo: {e}"))?;
     let payment = Payment::new(recipient, Some(amount), Some(memo), None, None, vec![])
