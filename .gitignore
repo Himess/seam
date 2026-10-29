@@ -1,0 +1,29 @@
+# Secrets: never commit
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+
+# Rust (research/relay-synthetic-headers)
+target/
+
+# Header fetches: they hold peer addresses, which stay local
+*.jsonl
+*.jsonl.peers
+
+# Python
+__pycache__/
+*.pyc
+
+# OS, editors, local tools
+.DS_Store
+.idea/
+.vscode/
+*.swp
+.claude/
