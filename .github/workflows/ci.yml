@@ -1,0 +1,58 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+      - name: Foundry 1.8.5
+        uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
+        with:
+          version: v1.8.5
+      - name: Build
+        run: forge build --sizes
+      - name: Tests (two skip themselves without an RPC URL)
+        run: forge test -vv
+      - name: Formatting of the new Solidity (the relay keeps Zecured's bytes)
+        run: forge fmt --check src/interfaces src/examples test/examples test/deployments
+      - name: ABI files are current
+        run: |
+          forge inspect src/relay/ZcashHeaderRelay.sol:ZcashHeaderRelay abi --json > ../abi/ZcashHeaderRelay.json
+          forge inspect src/interfaces/IZcashHeaderRelayReader.sol:IZcashHeaderRelayReader abi --json > ../abi/IZcashHeaderRelayReader.json
+          git diff --exit-code -- ../abi
+      - name: The reader builds with solc 0.8.0, the example with solc 0.8.4
+        run: |
+          forge build --use 0.8.0 --evm-version istanbul --out "$RUNNER_TEMP/out-0.8.0" \
+            --cache-path "$RUNNER_TEMP/cache-0.8.0" src/interfaces/IZcashHeaderRelayReader.sol
+          forge build --use 0.8.4 --evm-version istanbul --out "$RUNNER_TEMP/out-0.8.4" \
+            --cache-path "$RUNNER_TEMP/cache-0.8.4" src/examples/ZcashFinalityGate.sol
+
+  reference:
+    name: Python reference re-checks the real header fixtures
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: zcash_header_check.py on every real fixture
+        run: |
+          for f in testnet_recent testnet_nu7_activation testnet_deposit_anchor mainnet_recent; do
+            python3 -I contracts/test/relay/tools/zcash_header_check.py fixture "contracts/test/relay/fixtures/$f.json"
+          done
