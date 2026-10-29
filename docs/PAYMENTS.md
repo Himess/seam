@@ -1,0 +1,108 @@
+# Shielded payment proofs
+
+A Seam payment proof lets a contract on an EVM chain check that a shielded Ironwood payment was made: to a committed
+receiver, of at least an amount, for one reference, and in the Zcash chain a Seam relay follows. The payment's
+transaction id, note and address never reach the EVM chain.
+
+## 1. What a proof shows
+
+A proof is a RISC Zero receipt (wrapped in Groth16) that the guest accepted a private witness. The guest runs
+`seam_payment::verify`, which accepts the witness only if:
+
+1. **Epoch.** Its consensus branch id is one the build allows, and the transaction carries the same one. The Testnet
+   build allows NU7's; the Mainnet build allows NU6.3's and NU7's. The network is a build parameter, never a witness
+   field, so each network has its own guest and image id.
+2. **Shape.** The transaction is v6 and Ironwood-only, with outputs enabled: no transparent input or output, and no
+   Sapling or Orchard-pool bundle, even an empty one.
+3. **Inclusion.** The transaction's txid reaches the `hashMerkleRoot` of its block B along a SHA-256d path. B's ZIP 221
+   history-tree leaf, through its path and the peaks, with the auth data root of a later header T, reaches T's
+   `hashBlockCommitments` (ZIP 244). Every node of that tree is personalized with the epoch's branch id, so B and T are
+   in the same epoch.
+4. **The note.** The witness's opening (a 43-byte raw receiver, the value and rseed) rebuilds a V3 note (ZIP 2005)
+   whose rho is the nullifier its action spends. The action's ciphertext, recovered with the ephemeral secret that note
+   derives and its `pk_d`, yields exactly that note. So the receiver's wallet finds it and can spend it.
+5. **The memo.** Its first 70 bytes are the ASCII text `seam1:` followed by 64 lowercase hex digits, which decode to
+   `paymentRef`. The rest of the memo is free.
+6. **The receiver commitment** is `keccak256(salt32 || receiver43)`.
+
+The guest then commits the journal, 192 bytes:
+
+```solidity
+abi.encode(uint8 version = 1, uint32 branchId, bytes32 anchor, bytes32 paymentRef,
+           bytes32 receiverCommitment, uint64 zatoshi)
+```
+
+`anchor` is SHA-256d of header T in internal byte order, as the relay stores it, and `zatoshi` the note's value.
+
+## 2. What reaches the EVM chain, and what never does
+
+| On chain | Never on chain |
+|---|---|
+| the anchor T, a header the relay already holds | the transaction id |
+| `paymentRef`, chosen by the app | the payment's block B, hidden among the epoch's blocks below T |
+| the receiver commitment `keccak256(salt32 \|\| receiver43)` | the note commitment and the nullifier |
+| the value, in zatoshi, and the branch id | the receiver, its address and viewing key, and the salt |
+
+The value is public: an app whose amounts must stay private needs another design.
+
+## 3. What you have to trust
+
+- **RISC Zero's proof system,** and the governance of the RISC Zero verifier router the verifier calls. The router's
+  owner can add a verifier under a new selector or remove one, but never replace the verifier behind a selector
+  (`RiscZeroVerifierRouter.addVerifier` refuses a selector in use or removed). The payment verifier pins the Groth16
+  selector it accepts, so a seal is checked by that one verifier or not at all. A removal would stop proofs from
+  verifying: a risk to liveness, not to safety.
+- **The pinned image id.** It is the hash of the guest's ELF, built reproducibly in RISC Zero's Docker builder;
+  anyone can rebuild it and compare.
+- **The relay.** The anchor must be on its best chain with enough work on top
+  ([INTEGRATING.md](INTEGRATING.md) § 4). The relay checks every header, but someone has to feed it.
+- **The statement.** It checks the rules above and nothing else: no proof of work (the relay does) and no Halo 2 proof
+  or signature (Zcash's consensus did when the block was mined).
+
+## 4. How to pay
+
+Any wallet that can send an Ironwood payment with a memo:
+- to the receiver the app committed to;
+- of at least the amount;
+- with the memo text `seam1:` followed by the 64 lowercase hex digits of `paymentRef`.
+
+ZIP 302 reads a memo whose first byte is 0xF4 or less as UTF-8 text, so wallets show `seam1:…` as text and can send
+it typed by hand. A ZIP 321 payment URI carries it in its `memo` parameter: the memo's bytes in base64url without
+padding. `seam memo <paymentRef> --address <ua> --amount <ZEC>` prints both.
+
+The payment must be Ironwood-only: a wallet that adds a transparent change output, or spends from another pool,
+makes a transaction the statement refuses.
+
+## 5. Who can prove
+
+The witness needs the note's opening and the transaction's place in the chain. Two parties have the opening:
+- **the payer,** who built the transaction and kept the opening (with `ovk = None`, nobody else can recover the note
+  from the chain);
+- **the receiver,** who finds the note with its viewing key by trial decryption.
+
+Either one builds the witness locally with `seam witness`, from chain data any node or lightwalletd server serves.
+Proving runs on any machine with the witness; a witness should never leave a machine its owner doesn't control.
+
+## 6. How an app consumes a proof
+
+`ZcashPaymentVerifier.verify(journal, seal)` returns the payment and the work on top of its anchor. It reverts unless
+the journal is a version 1 journal of a branch id the verifier allows, the router verifies the seal for the pinned
+image id, and the anchor is on the relay's best chain. Finality is the app's choice:
+- **Work, not blocks:** require `anchorWork >= minWork`, fixed at deployment ([INTEGRATING.md](INTEGRATING.md) § 4).
+- **A pending window:** settle only after `finalizeDepth` more headers and `finalizeDelay` seconds, and only if the
+  anchor is still final then.
+- **Reorganisations:** drop a pending settlement whose anchor left the best chain; anyone can prove again.
+- **A deadline:** refund the payer of the EVM side if no settlement is pending when it passes.
+
+`ShieldedPaymentEscrow` is an example of all four.
+
+## 7. Choosing the anchor
+
+The anchor reveals a header, so it tells an observer the payment is in some block of T's epoch below T. To keep that
+set large:
+- **Fix the anchor height first,** then pay after a random delay, so the payment's time says nothing about the anchor.
+- **Keep the payment and its anchor in one epoch.** The ZIP 221 history tree restarts at every network upgrade, so a
+  payment made before an activation can only be proven against an anchor before it.
+- **Don't pay near a known activation.**
+
+`seam witness --anchor <height>` anchors at a planned header.
