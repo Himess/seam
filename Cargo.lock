@@ -2068,6 +2068,7 @@ dependencies = [
  "blake2b_simd",
  "hex",
  "primitive-types",
+ "rand_core 0.6.4",
  "seam-payment",
  "serde",
  "serde_json",

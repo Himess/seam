@@ -7,8 +7,10 @@
 //! (`signer/crates/deposit-witness` at 73de9f909e270e8aea10c2b221905f62a6a4c4df), which built payment witnesses from
 //! real Testnet data on 27 October 2026.
 
+pub mod headers;
 pub mod history;
 pub mod mmr;
 pub mod network;
+pub mod p2p;
 
 pub use network::{Epoch, ZcashNetwork};
