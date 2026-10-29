@@ -27,7 +27,7 @@ same code for both. Every value was checked in Zebra v7.0.0-rc.0 and the ZIPs; t
 | `powLimit` / `powLimitBits` | 2^251 − 1 rounded: `0x07ffff << 232` / `0x2007ffff` | 2^243 − 1 rounded: `0x07ffff << 224` / `0x1f07ffff` |
 | `minDifficultyBlocks` / `minDifficultyStartHeight` | yes, from 299,188 | no (refused with the Mainnet id) / 0 |
 | `maxTimeStartHeight` (time ≤ median-time-past + 90 min) | 653,606 | 0: every height |
-| `nu7ActivationHeight` | 4,465,026 | 3,543,405 in ZIP 259 and Zebra 7.0.0, **not in the configuration yet**: `NEVER` = 2^32 − 1 until a release sets it, with tests |
+| `nu7ActivationHeight` | 4,465,026 | 3,543,405 (ZIP 259, Zebra 7.0.0); `NEVER` = 2^32 − 1 would switch NU7 off |
 | target spacing / averaging window before NU7 | 75 s / 17 | 75 s / 17 |
 | target spacing / averaging window from NU7 | 25 s / 102 | 25 s / 102 |
 | `minCheckpointHeight` | 653,606 | 653,600 (Blossom) |
@@ -53,7 +53,7 @@ Every header must pass all of the following (references: Zebra v7.0.0-rc.0, comm
    over the averaging window (exact floor, computed as Zebra does with separate quotient and remainder sums), damping
    factor 4, bounds +16 % / −32 %, medians of 11 times, divide-then-multiply, capped at the network's PoWLimit. The
    window is **17 blocks at 75 s before NU7 and 102 blocks at 25 s from NU7** (Testnet height 4,465,026; Mainnet
-   3,543,405, not in `config/relay-mainnet.json` yet). **Testnet minimum-difficulty rule** (`minDifficultyBlocks`, never on Mainnet): if a block's time is
+   3,543,405). **Testnet minimum-difficulty rule** (`minDifficultyBlocks`, never on Mainnet): if a block's time is
    *more than* 450 s after its parent's (6 × 75 s before NU7, 18 × 25 s from NU7), nBits must be `0x2007ffff`.
 4. **Equihash (200, 9)**, following librustzcash `components/equihash/src/verify.rs`: BLAKE2b-400 with
    personalization `"ZcashPoW" || le32(200) || le32(9)` over the 140-byte prefix and `le32(i / 2)`; 512 big-endian
@@ -83,7 +83,9 @@ nBits, Equihash and PoW check of the 1,572 headers that have their 28-block cont
 minimum-difficulty rule would refuse exactly the 7 blocks that came more than 450 s after their parents (451 s to
 762 s), which carry the ordinary retarget value. The
 Mainnet PoWLimit itself is not exercised: real targets are about 1.8 × 10^8 times below it. The post-NU7 rules are the
-same on both networks (ZIP 218), so on Mainnet they are covered by the Testnet data only.
+same on both networks (ZIP 218), so on Mainnet they are covered by the Testnet data only until Mainnet's NU7 activates
+(about 6 November 2026). Once both networks are past NU7, only the PoWLimit and the minimum-difficulty rule tell their
+headers apart, so the network a relay follows is the one its checkpoint is on.
 
 ## Not verified (yet)
 
@@ -94,9 +96,10 @@ same on both networks (ZIP 218), so on Mainnet they are covered by the Testnet d
 - **The checkpoint.** Its hash, height and the 113 context entries (times and nBits of heights checkpoint − 112 ..
   checkpoint) are trusted constructor input.
 - **The network parameters.** Like the checkpoint, they are trusted deployment input (`config/relay-<network>.json`);
-  the constructor refuses inconsistent sets, not wrong values. ZIP 259 and Zebra 7.0.0 set NU7's Mainnet height to
-  3,543,405; `config/relay-mainnet.json` keeps `NEVER` until a release sets it, with tests on real headers across the
-  activation.
+  the constructor refuses inconsistent sets, not wrong values. NU7's Mainnet height, 3,543,405 (ZIP 259, Zebra
+  7.0.0), is checked on real Mainnet headers only once NU7 activates there. The NatSpec of
+  `RelayParams.nu7ActivationHeight` in `ZcashHeaderRelay.sol` predates that assignment: the configuration holds the
+  height.
 - **Finality.** No checkpoint finality or reorg depth limit beyond the most-work rule.
 
 **Testnet caveat.** The minimum-difficulty rule lets anyone mine a block at difficulty 1 when its time is more than
@@ -143,7 +146,7 @@ cheatcode and the report shows 0). At 25-second blocks, relaying every header is
 
 ```bash
 cd contracts
-forge test --match-path 'test/relay/*'            # 79 tests, about 1 s once built; one needs BASE_MAINNET_RPC_URL
+forge test --match-path 'test/relay/*'            # 80 tests, about 1 s once built; one needs BASE_MAINNET_RPC_URL
 forge test --isolate --match-path 'test/relay/*'  # same, every top-level call its own transaction
 ```
 
@@ -162,14 +165,15 @@ silently skipping every later check (before this change `test_constructor_reject
   fork choice: a lighter fork does not reorganise, an equal-work fork keeps the first tip, a heavier fork (8 blocks
   over 7) reorganises and the real block then reorganises back; a side-branch block is checked against its own
   branch's history; constructor input validation; gas.
-- `ZcashHeaderRelayMainnet.t.sol` (16, Mainnet parameters): the 180 real Mainnet headers 3,497,560 .. 3,497,739, each
+- `ZcashHeaderRelayMainnet.t.sol` (17, Mainnet parameters): the 180 real Mainnet headers 3,497,560 .. 3,497,739, each
   submitted and checked, including the two that came 451 s and 466 s after their parents; batch submission; cumulative
   work; rejections: wrong nBits (also the Mainnet PoWLimit after a 451 s gap: no minimum-difficulty rule), time ≤
   median-time-past, time > median + 90 min, time > clock + 2 h, six one-defect Equihash mutations, a genuine solution
   whose hash is above the Mainnet target; where the networks differ: Testnet parameters refuse the Mainnet block that
   came 451 s after its parent, a genuine Testnet minimum-difficulty block is refused without the rule, Mainnet
-  parameters refuse a real post-NU7 Testnet header and a context holding a Testnet minimum-difficulty block, an NU7
-  height set too early breaks the real Mainnet block there; gas.
+  parameters refuse a real Testnet header from between the two NU7 heights and a context holding a Testnet
+  minimum-difficulty block, and compute a real post-NU7 Testnet header's nBits exactly (both networks then share the
+  adjustment), an NU7 height set too early breaks the real Mainnet block there; gas.
 - `ZcashHeaderRelayParams.t.sol` (13): the network ids, `params()`, the PoWLimits as the rounded specification
   values; every constructor refusal (`InvalidNetworkId`, `InvalidPowLimit` for non-canonical, foreign, negative, zero
   and ≥ 2^255 limits, `InvalidMinDifficultyRule`, `InvalidDifficultyAdjustment`, `InvalidMinCheckpointHeight`) and the

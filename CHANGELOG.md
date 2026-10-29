@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.0 (unreleased)
+
+- `config/relay-mainnet.json` sets NU7's Mainnet height to 3,543,405 (ZIP 259, Zebra 7.0.0) instead of `NEVER`, so a
+  Mainnet relay deployed from it follows Mainnet across NU7. The test parameters, the Python reference and
+  `build_fixture.py` use the same height.
+
 ## v0.1.0 (2026-10-29)
 
 - The Zcash header relay, extracted from [Zecured](https://github.com/Himess/zecured) at `73de9f9` with its commit

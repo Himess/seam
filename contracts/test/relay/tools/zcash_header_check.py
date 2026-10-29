@@ -84,7 +84,8 @@ class Network:
 
 TESTNET = Network("Zcash Testnet", (1 << 251) - 1, min_difficulty_start=299_188, max_time_start=653_606,
                   nu7=4_465_026)
-MAINNET = Network("Zcash Mainnet", (1 << 243) - 1, min_difficulty_start=None, max_time_start=0, nu7=None)
+# Mainnet NU7: ZIP 259 and Zebra 7.0.0 (zebra-chain/src/parameters/constants.rs).
+MAINNET = Network("Zcash Mainnet", (1 << 243) - 1, min_difficulty_start=None, max_time_start=0, nu7=3_543_405)
 NETWORKS = {"testnet": TESTNET, "mainnet": MAINNET}
 NU7_ACTIVATION_TESTNET = TESTNET.nu7
 POW_LIMIT = TESTNET.pow_limit  # 0x07ffff << 232 (kept for make_synthetic.py)

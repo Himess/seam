@@ -38,9 +38,9 @@ CONTEXT = 102 + 11  # PoWAveragingWindow (NU7) + PoWMedianBlockSpan
 NETWORKS = {
     "testnet": {"name": "Zcash Testnet", "cipherscan": "https://api.testnet.cipherscan.app/api/block/{}",
                 "nu7_activation_height": 4465026},
-    # Mainnet NU7 height: not assigned yet (ZIP 259: "TBD (To be set on OCT 20)").
+    # Mainnet NU7 height: ZIP 259 and Zebra 7.0.0 (zebra-chain/src/parameters/constants.rs).
     "mainnet": {"name": "Zcash Mainnet", "cipherscan": "https://api.mainnet.cipherscan.app/api/block/{}",
-                "nu7_activation_height": None},
+                "nu7_activation_height": 3543405},
 }
 
 

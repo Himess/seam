@@ -122,11 +122,12 @@ against are in [contracts/src/relay/README.md](contracts/src/relay/README.md).
 [`config/relay-mainnet.json`](contracts/config/relay-mainnet.json) holds Mainnet's rules. They were checked against
 1,600 real Mainnet headers, 180 of them in the Solidity tests.
 
-The one gap is NU7's Mainnet activation height, which stays `NEVER` for now. A relay deployed with `NEVER` refuses the
-first NU7 block. [ZIP 259](https://github.com/zcash/zips/blob/2bdf39494320e5e04057ac93b1794031ebfb00b5/zips/zip-0259.md)
-(status Proposed) and [Zebra 7.0.0](https://github.com/ZcashFoundation/zebra/releases/tag/v7.0.0) set it to 3,543,405;
-Mainnet was at block 3,535,069 on 29 October 2026, so at 75 s per block it activates around 6 November. A Mainnet relay
-comes with that height, and with tests on real headers across the activation.
+NU7's Mainnet height is 3,543,405, from
+[ZIP 259](https://github.com/zcash/zips/blob/2bdf39494320e5e04057ac93b1794031ebfb00b5/zips/zip-0259.md) (status
+Proposed) and [Zebra 7.0.0](https://github.com/ZcashFoundation/zebra/releases/tag/v7.0.0). Mainnet was at block
+3,535,159 on 29 October 2026, so at 75 s per block NU7 activates there around 6 November. Until then the post-NU7 rules
+are checked on Testnet's real headers only (ZIP 218 gives both networks the same ones); tests on real Mainnet headers
+across the activation follow it.
 
 ## Repository
 
@@ -138,7 +139,7 @@ comes with that height, and with tests on real headers across the activation.
 | `contracts/config/` | Each network's consensus parameters, with their sources. |
 | `contracts/script/DeployRelay.s.sol` | Deploys a relay from a parameter file and a checkpoint. |
 | `contracts/deployments/` | Deployment records: Seam's relay, and the relay of Zecured's live run on 27 October 2026. |
-| `contracts/test/relay/` | **79 tests on real Testnet and Mainnet headers:**<br>• 30 headers across NU7's activation<br>• Equihash checked against the `equihash` crate Zebra uses, on 592 cases<br>• an independent Python implementation of the rules<br>• the P2P header tools |
+| `contracts/test/relay/` | **80 tests on real Testnet and Mainnet headers:**<br>• 30 headers across NU7's activation<br>• Equihash checked against the `equihash` crate Zebra uses, on 592 cases<br>• an independent Python implementation of the rules<br>• the P2P header tools |
 | `contracts/test/examples/`, `contracts/test/deployments/` | 12 tests of the reader, the example and Seam's deployment record. |
 | `scripts/relay-feed.sh` | Feeds a relay from Zcash peers. |
 | `abi/` | ABI JSON for TypeScript and other clients. |

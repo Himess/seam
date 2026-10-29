@@ -136,8 +136,8 @@ Either way the feeder exits on an RPC error, and the service restarts it after a
 4. **Verify** the source on the chain's explorer (`--verify` with an Etherscan API key, or `--verifier sourcify`).
 5. **Feed** it to the tip, and compare its tip with an explorer.
 
-**Mainnet:** `config/relay-mainnet.json` keeps NU7's height at `NEVER` until a release sets it, with tests. A relay
-deployed with `NEVER` refuses the first NU7 block and can't go past it.
+**Mainnet:** `config/relay-mainnet.json` sets NU7's height to 3,543,405 (ZIP 259, Zebra 7.0.0). A relay deployed with
+`NEVER` instead refuses the first NU7 block and can't go past it.
 
 How Seam's own relay was deployed:
 [the commit that added its record](https://github.com/Himess/seam/commit/97aa01bf2ebc9909f9636da5ebb52c91d1c28731).

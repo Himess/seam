@@ -7,7 +7,7 @@
   "minDifficultyBlocks": false,
   "minDifficultyStartHeight": 0,
   "maxTimeStartHeight": 0,
-  "nu7ActivationHeight": 4294967295,
+  "nu7ActivationHeight": 3543405,
   "preNu7TargetSpacing": 75,
   "preNu7AveragingWindow": 17,
   "postNu7TargetSpacing": 25,
@@ -18,7 +18,7 @@
     "powLimit": "PoWLimit = 2^243 - 1, rounded through its compact form 0x1f07ffff",
     "minDifficultyBlocks": "Mainnet has no minimum-difficulty blocks; the relay refuses the rule with the Mainnet network id",
     "maxTimeStartHeight": "0: the 90-minute rule applies at every height (Zebra; the specification says from height 2)",
-    "nu7ActivationHeight": "4294967295 = NEVER: the Mainnet NU7 height is to be set on 2026-10-20 (ZIP 259: 'TBD (To be set on OCT 20)'). A relay deployed with NEVER expects the pre-NU7 nBits for the first NU7 block, refuses it and can extend nothing above it, so set the assigned height here (from the updated ZIP 259 or Zebra's constants.rs; a multiple of 3, which DeployRelay checks) before deploying a relay that must cross NU7",
+    "nu7ActivationHeight": "3,543,405: ACTIVATION_HEIGHT (NU7) for Mainnet in ZIP 259 (zcash/zips main at 2bdf39494320e5e04057ac93b1794031ebfb00b5, status Proposed, set on 2026-10-20) and Zebra 7.0.0 (zebra-chain/src/parameters/constants.rs, Mainnet NU7 = Height(3_543_405)); a multiple of 3, which DeployRelay checks. A relay deployed with NEVER (4294967295) instead expects the pre-NU7 nBits for the first NU7 block, refuses it and can extend nothing above it",
     "minCheckpointHeight": "Blossom (75 s spacing) at 653,600; the relay has no pre-Blossom rules"
   }
 }

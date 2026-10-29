@@ -261,15 +261,28 @@ contract ZcashHeaderRelayMainnetTest is RelayFixtures {
         testnetRelay.submitHeader(a1);
     }
 
-    /// @notice Mainnet rules refuse real post-NU7 Testnet headers: with Mainnet's NU7 not assigned, the relay applies
-    ///         the 75 s / 17-block adjustment (value from the Python model, tools/zcash_header_check.py).
+    /// @notice Mainnet rules refuse a real Testnet header from between the two networks' NU7 heights: block 4,465,015
+    ///         comes before NU7 on Testnet (75 s, 17-block window) but after Mainnet's NU7 at 3,543,405, where the
+    ///         relay applies 25 s and 102 blocks (value from the Python model, tools/zcash_header_check.py).
     function test_mainnetRulesRefuseTestnetHeaders() public {
+        RealFixture memory fx = _loadReal(NU7_ACTIVATION);
+        ZcashHeaderRelay relay = _deploy(fx, _mainnetParams());
+        _warpTo(fx.headers[0]);
+        vm.expectRevert(abi.encodeWithSelector(IZcashHeaderRelay.BadDifficultyBits.selector, 0x1f0098bd, 0x1f01a82a));
+        relay.submitHeader(fx.headers[0]);
+        _deploy(fx).submitHeader(fx.headers[0]); // the Testnet relay accepts it
+    }
+
+    /// @notice Once both networks are past NU7 they share the adjustment (ZIP 218): Mainnet rules compute the nBits of
+    ///         a real post-NU7 Testnet header exactly (value from the Python model). Only the PoW limit and Testnet's
+    ///         minimum-difficulty rule still differ, so the network a relay follows is fixed by its checkpoint, which
+    ///         is trusted deployment input: DeployRelay refuses a checkpoint file of another network
+    ///         (test_config_refusesACheckpointOfAnotherNetwork).
+    function test_afterBothNu7sTheAdjustmentIsShared() public {
         RealFixture memory fx = _loadReal(RECENT);
         ZcashHeaderRelay relay = _deploy(fx, _mainnetParams());
         _warpTo(fx.headers[0]);
-        vm.expectRevert(abi.encodeWithSelector(IZcashHeaderRelay.BadDifficultyBits.selector, 0x1e2c3e86, 0x1e25fbcc));
-        relay.submitHeader(fx.headers[0]);
-        _deploy(fx).submitHeader(fx.headers[0]); // the Testnet relay accepts it
+        assertEq(relay.submitHeader(fx.headers[0]), fx.hashes[0]);
     }
 
     /// @notice The Testnet minimum difficulty (0x2007ffff) is above the Mainnet PoWLimit: a Mainnet relay refuses a
@@ -285,8 +298,8 @@ contract ZcashHeaderRelayMainnetTest is RelayFixtures {
         assertEq(_deploy(fx, p).networkId(), ZCASH_MAINNET);
     }
 
-    /// @notice Mainnet's NU7 height is not assigned yet (ZIP 259). If a relay assumed NU7 at 3,497,560, the real
-    ///         pre-NU7 block there would fail the 25 s / 102-block adjustment (value from the Python model).
+    /// @notice Mainnet's NU7 is at 3,543,405 (ZIP 259). If a relay assumed it at 3,497,560, the real pre-NU7 block
+    ///         there would fail the 25 s / 102-block adjustment (value from the Python model).
     function test_mainnet_nu7HeightDecidesTheAdjustment() public {
         RealFixture memory fx = _loadReal(MAINNET_RECENT);
         ZcashHeaderRelay.RelayParams memory p = _mainnetParams();

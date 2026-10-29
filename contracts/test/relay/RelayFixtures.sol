@@ -45,7 +45,8 @@ abstract contract RelayFixtures is Test {
     }
 
     /// @notice Zcash Mainnet (contracts/config/relay-mainnet.json): PoWLimit 2^243 - 1, no minimum-difficulty rule,
-    ///         the 90-minute rule at every height, NU7 not yet assigned, checkpoints from Blossom (653,600).
+    ///         the 90-minute rule at every height, NU7 at 3,543,405 (ZIP 259, Zebra 7.0.0), checkpoints from Blossom
+    ///         (653,600).
     function _mainnetParams() internal pure returns (ZcashHeaderRelay.RelayParams memory) {
         return ZcashHeaderRelay.RelayParams({
             networkId: ZCASH_MAINNET,
@@ -54,7 +55,7 @@ abstract contract RelayFixtures is Test {
             minDifficultyBlocks: false,
             minDifficultyStartHeight: 0,
             maxTimeStartHeight: 0,
-            nu7ActivationHeight: type(uint32).max,
+            nu7ActivationHeight: 3_543_405,
             preNu7TargetSpacing: 75,
             preNu7AveragingWindow: 17,
             postNu7TargetSpacing: 25,
