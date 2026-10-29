@@ -1,9 +1,10 @@
-# Zcash header relay (Tier 2 foundation)
+# Zcash header relay
 
 `ZcashHeaderRelay` accepts the block headers of one Zcash network, **Testnet or Mainnet**, on Base and keeps the best
 chain by cumulative work, starting from a trusted checkpoint. The network is fixed at deployment by its consensus
-parameters (`RelayParams`, from `contracts/config/relay-<network>.json`) and reported by `networkId()`. It lets Zecured
-prove deposits on Base without trusting the signers ([docs/TIER2.md](../../../docs/TIER2.md)).
+parameters (`RelayParams`, from `contracts/config/relay-<network>.json`) and reported by `networkId()`. Zecured used it
+to prove deposits on Base without trusting its signers
+([Zecured's TIER2.md](https://github.com/Himess/zecured/blob/73de9f909e270e8aea10c2b221905f62a6a4c4df/docs/TIER2.md)).
 
 | File | |
 |---|---|
@@ -17,7 +18,8 @@ prove deposits on Base without trusting the signers ([docs/TIER2.md](../../../do
 Only the rules that differ between the networks are parameters; everything else (Equihash (200, 9), version ≥ 4, the
 11-block median, damping 4, bounds +16 % / −32 %, the 90-minute and 2-hour time limits, the storage layout) is the
 same code for both. Every value was checked in Zebra v7.0.0-rc.0 and the ZIPs; the sources, with links, are on
-`ZcashHeaderRelay.RelayParams` and in [docs/ref/FACTS.md](../../../docs/ref/FACTS.md).
+`ZcashHeaderRelay.RelayParams` and in
+[Zecured's docs/ref/FACTS.md](https://github.com/Himess/zecured/blob/73de9f909e270e8aea10c2b221905f62a6a4c4df/docs/ref/FACTS.md).
 
 | `RelayParams` | Testnet | Mainnet |
 |---|---|---|
@@ -25,7 +27,7 @@ same code for both. Every value was checked in Zebra v7.0.0-rc.0 and the ZIPs; t
 | `powLimit` / `powLimitBits` | 2^251 − 1 rounded: `0x07ffff << 232` / `0x2007ffff` | 2^243 − 1 rounded: `0x07ffff << 224` / `0x1f07ffff` |
 | `minDifficultyBlocks` / `minDifficultyStartHeight` | yes, from 299,188 | no (refused with the Mainnet id) / 0 |
 | `maxTimeStartHeight` (time ≤ median-time-past + 90 min) | 653,606 | 0: every height |
-| `nu7ActivationHeight` | 4,465,026 | **not assigned yet** (ZIP 259: to be set on 2026-10-20): `NEVER` = 2^32 − 1 |
+| `nu7ActivationHeight` | 4,465,026 | 3,543,405 in ZIP 259 and Zebra 7.0.0, **not in the configuration yet**: `NEVER` = 2^32 − 1 until a release sets it, with tests |
 | target spacing / averaging window before NU7 | 75 s / 17 | 75 s / 17 |
 | target spacing / averaging window from NU7 | 25 s / 102 | 25 s / 102 |
 | `minCheckpointHeight` | 653,606 | 653,600 (Blossom) |
@@ -34,13 +36,13 @@ The constructor checks that the parameters can be applied consistently (`powLimi
 of `powLimit`, below 2^255; no minimum-difficulty rule with the Mainnet id; non-zero spacings; windows of 1 to 102
 blocks, which the 113 context entries cover; checkpoints at height 112 or above) but does not pin the public networks'
 values: those come from the configuration files, and `params()` returns them from a deployed relay. A Mainnet relay
-deployed before the Mainnet NU7 height is known (`NEVER`) expects the pre-NU7 nBits for the first NU7 block, refuses
-it and can extend nothing above it, so a relay that must cross NU7 is deployed with the assigned height.
+deployed with `NEVER` expects the pre-NU7 nBits for the first NU7 block, refuses it and can extend nothing above it,
+so a relay that must cross NU7 is deployed with the assigned height.
 
 ## What is verified
 
 Every header must pass all of the following (references: Zebra v7.0.0-rc.0, commit
-`6d1e414d6f55e4180d0e47baaa934bf97d5b4fec`, the Zebra version the project's light wallet server runs):
+`6d1e414d6f55e4180d0e47baaa934bf97d5b4fec`, the Zebra version Zecured's light wallet server ran):
 
 1. **Format and linkage.** 1487 bytes (140-byte prefix, compactSize(1344), solution); version ≥ 4 as an int32 (Zebra
    `check_version`); the parent (`hashPrevBlock`) is known; the block is not already known.
@@ -50,8 +52,8 @@ Every header must pass all of the following (references: Zebra v7.0.0-rc.0, comm
 3. **Difficulty** (Zebra `AdjustedDifficulty`, ZIP 218, ZIP 259): nBits must equal `ThresholdBits(height)`: mean target
    over the averaging window (exact floor, computed as Zebra does with separate quotient and remainder sums), damping
    factor 4, bounds +16 % / −32 %, medians of 11 times, divide-then-multiply, capped at the network's PoWLimit. The
-   window is **17 blocks at 75 s before NU7 and 102 blocks at 25 s from NU7** (Testnet height 4,465,026; Mainnet not
-   assigned yet). **Testnet minimum-difficulty rule** (`minDifficultyBlocks`, never on Mainnet): if a block's time is
+   window is **17 blocks at 75 s before NU7 and 102 blocks at 25 s from NU7** (Testnet height 4,465,026; Mainnet
+   3,543,405, not in `config/relay-mainnet.json` yet). **Testnet minimum-difficulty rule** (`minDifficultyBlocks`, never on Mainnet): if a block's time is
    *more than* 450 s after its parent's (6 × 75 s before NU7, 18 × 25 s from NU7), nBits must be `0x2007ffff`.
 4. **Equihash (200, 9)**, following librustzcash `components/equihash/src/verify.rs`: BLAKE2b-400 with
    personalization `"ZcashPoW" || le32(200) || le32(9)` over the 140-byte prefix and `le32(i / 2)`; 512 big-endian
@@ -87,11 +89,14 @@ same on both networks (ZIP 218), so on Mainnet they are covered by the Testnet d
 
 - **Block contents.** Transactions, `hashMerkleRoot` and `hashBlockCommitments` are stored as committed by the proof
   of work but not checked against block data. Proving facts about them (an Ironwood root, a transaction) is the job of
-  the inclusion proofs designed in docs/TIER2.md.
+  the inclusion proofs designed in
+  [Zecured's TIER2.md](https://github.com/Himess/zecured/blob/73de9f909e270e8aea10c2b221905f62a6a4c4df/docs/TIER2.md).
 - **The checkpoint.** Its hash, height and the 113 context entries (times and nBits of heights checkpoint − 112 ..
   checkpoint) are trusted constructor input.
 - **The network parameters.** Like the checkpoint, they are trusted deployment input (`config/relay-<network>.json`);
-  the constructor refuses inconsistent sets, not wrong values. The Mainnet NU7 height is not known before 2026-10-20.
+  the constructor refuses inconsistent sets, not wrong values. ZIP 259 and Zebra 7.0.0 set NU7's Mainnet height to
+  3,543,405; `config/relay-mainnet.json` keeps `NEVER` until a release sets it, with tests on real headers across the
+  activation.
 - **Finality.** No checkpoint finality or reorg depth limit beyond the most-work rule.
 
 **Testnet caveat.** The minimum-difficulty rule lets anyone mine a block at difficulty 1 when its time is more than
@@ -100,12 +105,13 @@ clock rule bounds how far an attacker can push timestamps, but blocks of that ki
 cheaply, and once the averaging window holds such blocks the following ones stay easy too: in a simulation, 300
 extra confirmations cost 0.085 of one honest block's work. `confirmations` counts them as blocks;
 `confirmationWork` does not inflate. A consumer that needs reorg resistance on Testnet must require work, never a
-block count (docs/TIER2.md). Mainnet has no minimum-difficulty blocks; work is still the measure to require there.
+block count ([Zecured's TIER2.md](https://github.com/Himess/zecured/blob/73de9f909e270e8aea10c2b221905f62a6a4c4df/docs/TIER2.md)).
+Mainnet has no minimum-difficulty blocks; work is still the measure to require there.
 
 **Reorganisations.** A reorganisation rewrites the best-chain index of the new branch only; heights above the new
 tip are left as stale entries that every view ignores (all reads are bounded by the tip height). Clearing them used
 to cost gas per orphaned height, so a long, light branch built on a stale tip could push the honest reorganisation
-above the transaction gas limit and freeze the relay (contracts review R-1).
+above the transaction gas limit and freeze the relay (Zecured's contracts review, R-1).
 
 ## Gas
 
@@ -123,19 +129,21 @@ runs, over the 32 real post-NU7 headers of `testnet_recent.json` and the first 3
 | fork test, whole transactions: minimum-difficulty blocks (no mean target to compute), side branches, reorganisations of up to 8 blocks | 517,572 – 656,865 |
 | deployment, including the 113 context entries and the 12 parameters | 3,253,717 |
 
-The network parameters are immutables: against the relay with Testnet constants (a577690), the same 32 Testnet headers
+The network parameters are immutables: against the relay with Testnet constants
+([Zecured a577690](https://github.com/Himess/zecured/commit/a577690da8ba77de8decf5c4850700f8c20dbdca)), the same 32 Testnet headers
 cost **101 gas more per header** (mean 624,849 → 624,950 in one `--isolate --gas-report` run with both relays) and
 the deployment 316,469 more (the parameter checks and `params()`; runtime code 8,578 → 9,862 bytes).
 `forge test --isolate --match-path 'test/relay/*' --match-test gas -vv` prints the per-call numbers; the deployment
 cost needs `FOUNDRY_DYNAMIC_TEST_LINKING=false ... --gas-report` (with dynamic test linking `new` becomes a
 cheatcode and the report shows 0). At 25-second blocks, relaying every header is ~3,456 transactions per day
-(≈ 2.2 × 10^9 gas). Proving batches of headers in a zkVM instead is discussed in docs/TIER2.md.
+(≈ 2.2 × 10^9 gas). Proving batches of headers in a zkVM instead is discussed in
+[Zecured's TIER2.md](https://github.com/Himess/zecured/blob/73de9f909e270e8aea10c2b221905f62a6a4c4df/docs/TIER2.md).
 
 ## Tests
 
 ```bash
 cd contracts
-forge test --match-path 'test/relay/*'            # 77 tests, no RPC, about 3 s
+forge test --match-path 'test/relay/*'            # 79 tests, about 1 s once built; one needs BASE_MAINNET_RPC_URL
 forge test --isolate --match-path 'test/relay/*'  # same, every top-level call its own transaction
 ```
 
@@ -168,14 +176,16 @@ silently skipping every later check (before this change `test_constructor_reject
   checkpoint height bounds; that `maxTimeStartHeight`, `minDifficultyStartHeight` and `nu7ActivationHeight` are applied
   at exactly their heights; the configuration files parse to the tested parameters, deploy working relays and refuse a
   checkpoint of the other network; `DeployRelay`'s record name and NU7 height checks.
-- `ZcashHeaderRelayReview.t.sol` (3): the contracts review's regressions (batch skipping known headers, reorganisation
-  cost independent of the orphaned branch, stale entries above the tip).
+- `ZcashHeaderRelayReview.t.sol` (3): the regressions of Zecured's contracts review (batch skipping known headers,
+  reorganisation cost independent of the orphaned branch, stale entries above the tip).
+- `RelayCostMainnet.t.sol` (2): gas per Mainnet header by batch size (1, 4, 8, 16); with `BASE_MAINNET_RPC_URL`, the
+  L2 execution fee and the L1 data fee of each batch on a Base mainnet fork (skipped without it).
 - `ZcashEquihash.t.sol` (9): the hard-coded BLAKE2b initial state recomputed from the IV and parameter block; the
   EIP-152 precompile against its test vector 5; leaf strings against Python's `hashlib.blake2b`; all 62 real solutions;
   the mutations with the reference's error kinds; crafted trees for every error kind (including `NonZeroRootHash`); a
   fuzzed bit flip anywhere in a real solution.
 - `ZcashEquihashCorpus.t.sol` (1): agreement with the `equihash` crate 0.3.0 (the reference Zebra calls) on 592
-  labelled cases built from the real Testnet headers (RQ-10).
+  labelled cases built from the real Testnet headers.
 - `ZcashPow.t.sol` (8): nBits decoding and encoding against zcashd `SetCompact`/`GetCompact` vectors, PoWLimit, work,
   damping truncation, clamps and cap, median, byte reversal, and a fuzzed compact round trip.
 
@@ -188,11 +198,11 @@ silently skipping every later check (before this change `test_constructor_reject
 | `testnet_recent.json` | checkpoint 4,487,999 + 113 context entries; 32 headers 4,488,000 .. 4,488,031 | Zcash Testnet P2P |
 | `testnet_nu7_activation.json` | checkpoint 4,465,014 + context; 30 headers 4,465,015 .. 4,465,044 (11 pre-NU7, 19 post-NU7) | Zcash Testnet P2P |
 | `testnet_synthetic.json` | **SYNTHETIC**: one-defect mutations of header 4,488,000; fork headers on block 4,488,002 | generated |
-| `testnet_deposit_anchor.json` | checkpoint 4,488,559 + context; 12 headers 4,488,560 .. 4,488,571: the anchor of the real deposit proof in `test/fork/DepositProofs.t.sol` and the work on top of it | Zcash Testnet P2P |
+| `testnet_deposit_anchor.json` | checkpoint 4,488,559 + context; 12 headers 4,488,560 .. 4,488,571: the anchor of the real deposit proof in Zecured's [`test/fork/DepositProofs.t.sol`](https://github.com/Himess/zecured/blob/73de9f909e270e8aea10c2b221905f62a6a4c4df/contracts/test/fork/DepositProofs.t.sol) and the work on top of it | Zcash Testnet P2P |
 | `mainnet_recent.json` | checkpoint 3,497,559 + 113 context entries; 180 headers 3,497,560 .. 3,497,739 (before NU7), including 3,497,585 and 3,497,733, 451 s and 466 s after their parents | Zcash Mainnet P2P, pinned by Zebra's checkpoint list |
 | `mainnet_synthetic.json` | **SYNTHETIC**: one-defect mutations of header 3,497,560; F1, a header on block 3,497,562 with the real child's time and nBits and a genuine solution whose hash is above the target | generated |
 
-Raw headers come from the Zcash P2P networks themselves: the project's light wallet server leaves
+Raw headers come from the Zcash P2P networks themselves: Zecured's light wallet server leaves
 `CompactBlock.header` empty and no public explorer exposes `hashBlockCommitments`. `tools/zcash_p2p_headers.py`
 recomputes every SHA256d and checks the linkage while fetching. Testnet: `getheaders` from a `/Zebra:7.0.0-rc.0/` peer
 found through the Testnet DNS seeders, protocol 170180. Mainnet (`--network mainnet`: magic `24e92764`, port 8233,
@@ -241,9 +251,21 @@ python3 -I zcash_header_check.py chain mainnet.jsonl --network mainnet --equihas
 
 `script/DeployRelay.s.sol` reads the network's parameters from `config/relay-<network>.json` (`RELAY_NETWORK`,
 default `testnet`, or any file through `RELAY_CONFIG`) and the checkpoint from `RELAY_CHECKPOINT`, a file in the
-fixture format whose `network` must match the configuration's. A Testnet relay's record defaults to
-`deployments/base-sepolia.relay.json`; any other network needs `DEPLOYMENT_NAME`, so it cannot overwrite that record.
-The script refuses an NU7 height that is not a multiple of 3 (ZIP 259) and warns when it is `NEVER`. The relay already
-on Base Sepolia (`deployments/base-sepolia.relay.json`, 2026-10-12) predates the parameters and has no `networkId()`.
+fixture format whose `network` must match the configuration's. It writes `deployments/<name>.relay.json`, in a
+simulation too (with a simulated address). **Always set `DEPLOYMENT_NAME`:** a Testnet relay's record otherwise defaults
+to `deployments/base-sepolia.relay.json`, the record of Zecured's live run below, and any other network needs a name.
+The script refuses an NU7 height that is not a multiple of 3 (ZIP 259) and warns when it is `NEVER`.
+
+Two Testnet relays are recorded on Base Sepolia:
+
+- **Zecured's live-run relay**
+  [`0xEc34aA21cDe1366b397a99A4d90fc6B2f02cFaEa`](https://sepolia.basescan.org/address/0xEc34aA21cDe1366b397a99A4d90fc6B2f02cFaEa#code):
+  checkpoint 4,547,001, deployed for Zecured's live run of 27 October 2026 (`deployments/base-sepolia.relay.json` and
+  `base-sepolia.relay-checkpoint.json`). It stays unoperated during ZECATHON judging.
+- **Seam's relay**
+  [`0x77ceDADCFf8bE399C67AB579Ad739820FaC5cE0c`](https://sepolia.basescan.org/address/0x77ceDADCFf8bE399C67AB579Ad739820FaC5cE0c#code):
+  checkpoint 4,554,953, deployed on 29 October 2026 (`deployments/seam-base-sepolia.relay.json` and
+  `seam-base-sepolia.relay-checkpoint.json`, checked by `test/deployments/SeamBaseSepolia.t.sol`). It follows Zcash
+  Testnet; the repository's [README](../../../README.md) says how it is fed.
 
 Nothing here is a mock: the relay verifies real proof of work, and the synthetic data exists only in tests.
