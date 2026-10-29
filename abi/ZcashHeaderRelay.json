@@ -1,0 +1,731 @@
+[
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "params_",
+        "type": "tuple",
+        "internalType": "struct ZcashHeaderRelay.RelayParams",
+        "components": [
+          {
+            "name": "networkId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "powLimit",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "powLimitBits",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "minDifficultyBlocks",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "minDifficultyStartHeight",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "maxTimeStartHeight",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "nu7ActivationHeight",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "preNu7TargetSpacing",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "preNu7AveragingWindow",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "postNu7TargetSpacing",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "postNu7AveragingWindow",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "minCheckpointHeight",
+            "type": "uint32",
+            "internalType": "uint32"
+          }
+        ]
+      },
+      {
+        "name": "checkpointHash_",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "checkpointHeight_",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "contextTimes",
+        "type": "uint32[]",
+        "internalType": "uint32[]"
+      },
+      {
+        "name": "contextBits",
+        "type": "uint32[]",
+        "internalType": "uint32[]"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "CONTEXT_LENGTH",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_AVERAGING_WINDOW",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "NEVER",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "bestBlockHashAt",
+    "inputs": [
+      {
+        "name": "height",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "bestChainTip",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "blockHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "height",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "chainWork",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "checkpointHash",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "checkpointHeight",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "confirmationWork",
+    "inputs": [
+      {
+        "name": "blockHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "confirmations",
+    "inputs": [
+      {
+        "name": "blockHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "headerOf",
+    "inputs": [
+      {
+        "name": "blockHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "info",
+        "type": "tuple",
+        "internalType": "struct IZcashHeaderRelay.HeaderInfo",
+        "components": [
+          {
+            "name": "known",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "prevHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "height",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "time",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "bits",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "chainWork",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "merkleRoot",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "blockCommitments",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isInBestChain",
+    "inputs": [
+      {
+        "name": "blockHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "networkId",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "params",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct ZcashHeaderRelay.RelayParams",
+        "components": [
+          {
+            "name": "networkId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "powLimit",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "powLimitBits",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "minDifficultyBlocks",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "minDifficultyStartHeight",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "maxTimeStartHeight",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "nu7ActivationHeight",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "preNu7TargetSpacing",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "preNu7AveragingWindow",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "postNu7TargetSpacing",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "postNu7AveragingWindow",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "minCheckpointHeight",
+            "type": "uint32",
+            "internalType": "uint32"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "submitHeader",
+    "inputs": [
+      {
+        "name": "header",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "blockHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "submitHeaders",
+    "inputs": [
+      {
+        "name": "headers",
+        "type": "bytes[]",
+        "internalType": "bytes[]"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "BestChainUpdated",
+    "inputs": [
+      {
+        "name": "newTip",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "newHeight",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "previousTip",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "forkHeight",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "HeaderAdded",
+    "inputs": [
+      {
+        "name": "blockHash",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "prevHash",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "height",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "chainWork",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "BadDifficultyBits",
+    "inputs": [
+      {
+        "name": "bits",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "expected",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "Blake2bPrecompileFailed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "BlockAlreadyKnown",
+    "inputs": [
+      {
+        "name": "blockHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "HashAboveTarget",
+    "inputs": [
+      {
+        "name": "blockHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "target",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InvalidCheckpoint",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidContextBits",
+    "inputs": [
+      {
+        "name": "index",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InvalidContextLength",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidDifficultyAdjustment",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidEquihashSolution",
+    "inputs": [
+      {
+        "name": "result",
+        "type": "uint8",
+        "internalType": "enum ZcashEquihash.Result"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InvalidHeaderLength",
+    "inputs": [
+      {
+        "name": "length",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InvalidMinCheckpointHeight",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidMinDifficultyRule",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidNetworkId",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidPowLimit",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidSolutionLength",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidVersion",
+    "inputs": [
+      {
+        "name": "version",
+        "type": "int256",
+        "internalType": "int256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "SafeCastOverflowedIntToUint",
+    "inputs": [
+      {
+        "name": "value",
+        "type": "int256",
+        "internalType": "int256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "SafeCastOverflowedUintDowncast",
+    "inputs": [
+      {
+        "name": "bits",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "value",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "SafeCastOverflowedUintToInt",
+    "inputs": [
+      {
+        "name": "value",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "TimeTooEarly",
+    "inputs": [
+      {
+        "name": "time",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "medianTimePast",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "TimeTooFarInFuture",
+    "inputs": [
+      {
+        "name": "time",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "maxTime",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "TimeTooLate",
+    "inputs": [
+      {
+        "name": "time",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "maxTime",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "UnknownParent",
+    "inputs": [
+      {
+        "name": "prevHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ]
+  }
+]
