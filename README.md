@@ -27,21 +27,26 @@ flowchart LR
 
 ## Try it
 
-A relay on Base Sepolia follows Zcash Testnet:
+Two relays on Base Sepolia follow Zcash, one per network:
 
-| | |
-|---|---|
-| Relay | [`0x77ceDADCFf8bE399C67AB579Ad739820FaC5cE0c`](https://sepolia.basescan.org/address/0x77ceDADCFf8bE399C67AB579Ad739820FaC5cE0c#code) |
-| Starts at | Zcash Testnet block 4,554,953 (`000017d72ff0624af35183aa3d3d4045e79409810fba356c6020a4faecca1036`), checked against CipherScan |
-| Record | [`contracts/deployments/seam-base-sepolia.relay.json`](contracts/deployments/seam-base-sepolia.relay.json) |
-| Checked | On 29 October 2026 its tip, block 4,555,510, matched CipherScan |
+| | Zcash Testnet | Zcash Mainnet |
+|---|---|---|
+| Relay | [`0x77ceDADCFf8bE399C67AB579Ad739820FaC5cE0c`](https://sepolia.basescan.org/address/0x77ceDADCFf8bE399C67AB579Ad739820FaC5cE0c#code) | [`0x527B6347d2392d17fa5Bd13DF88A43676501BE48`](https://sepolia.basescan.org/address/0x527B6347d2392d17fa5Bd13DF88A43676501BE48#code) |
+| Starts at | block 4,554,953 (`000017d72ff0624af35183aa3d3d4045e79409810fba356c6020a4faecca1036`) | block 3,534,866 (`00000000006de6a6b439a6d0912c7a807253219aa720cf51e84981e40ea67f6b`) |
+| Record | [`seam-base-sepolia.relay.json`](contracts/deployments/seam-base-sepolia.relay.json) | [`seam-base-sepolia-mainnet.relay.json`](contracts/deployments/seam-base-sepolia-mainnet.relay.json) |
+| Checked | on 29 October 2026 its tip, block 4,555,510, matched CipherScan | on 29 October 2026 its tip, block 3,535,181, matched CipherScan |
+
+Both checkpoints were compared with CipherScan; the Mainnet one also descends from block 3,522,460, the last
+checkpoint Zebra 7.0.0 lists. The Mainnet relay is deployed with NU7 at 3,543,405, to cross it when Mainnet activates
+NU7, around 6 November 2026.
 
 ```sh
 cast call 0x77ceDADCFf8bE399C67AB579Ad739820FaC5cE0c "bestChainTip()(bytes32,uint256,uint256)" --rpc-url https://sepolia.base.org
+cast call 0x527B6347d2392d17fa5Bd13DF88A43676501BE48 "bestChainTip()(bytes32,uint256,uint256)" --rpc-url https://sepolia.base.org
 ```
 
-Anyone can feed it, and it checks every header, so a feeder can delay it but can't make it accept a bad one.
-I feed it from a server of mine. If its tip lags, feed it yourself: [docs/RELAYING.md](docs/RELAYING.md).
+Anyone can feed them, and they check every header, so a feeder can delay a relay but can't make it accept a bad one.
+I feed both from a server of mine. If a tip lags, feed it yourself: [docs/RELAYING.md](docs/RELAYING.md).
 
 ## Build on it
 
@@ -115,7 +120,7 @@ against are in [contracts/src/relay/README.md](contracts/src/relay/README.md).
 | Where it goes | Equihash is 361,100 of a typical header's 576,543 gas of execution ([gas table](contracts/src/relay/README.md#gas)) |
 | Cheapest batch size | 4 to 8 headers |
 | Per day after NU7 | 3,456 headers, about 0.010 ETH at Base mainnet's base fee of 0.005 gwei, measured on a Base mainnet fork ([Zecured's MAINNET.md](https://github.com/Himess/zecured/blob/73de9f909e270e8aea10c2b221905f62a6a4c4df/docs/MAINNET.md#3-a-mainnet-deployment)) |
-| The Seam relay on Base Sepolia | About 605,000 gas and 0.0000034 ETH per header at 0.005 to 0.006 gwei: about 0.012 ETH a day, measured on 29 October 2026 over 572 headers ([RELAYING.md](docs/RELAYING.md#cost)) |
+| The Seam relays on Base Sepolia | Testnet: about 605,000 gas and 0.0000034 ETH per header at 0.005 to 0.006 gwei, about 0.012 ETH a day. Mainnet before NU7: 578,000 gas and 0.0000032 ETH per header, about 0.0037 ETH a day at 75-second blocks. Measured on 29 October 2026 ([RELAYING.md](docs/RELAYING.md#cost)) |
 
 ## Zcash Mainnet
 
@@ -138,9 +143,9 @@ across the activation follow it.
 | `contracts/src/examples/ZcashFinalityGate.sol` | Example: act only on a block with enough work on top of it. |
 | `contracts/config/` | Each network's consensus parameters, with their sources. |
 | `contracts/script/DeployRelay.s.sol` | Deploys a relay from a parameter file and a checkpoint. |
-| `contracts/deployments/` | Deployment records: Seam's relay, and the relay of Zecured's live run on 27 October 2026. |
+| `contracts/deployments/` | Deployment records: Seam's two relays, and the relay of Zecured's live run on 27 October 2026. |
 | `contracts/test/relay/` | **80 tests on real Testnet and Mainnet headers:**<br>• 30 headers across NU7's activation<br>• Equihash checked against the `equihash` crate Zebra uses, on 592 cases<br>• an independent Python implementation of the rules<br>• the P2P header tools |
-| `contracts/test/examples/`, `contracts/test/deployments/` | 12 tests of the reader, the example and Seam's deployment record. |
+| `contracts/test/examples/`, `contracts/test/deployments/` | 16 tests of the reader, the example and Seam's two deployment records. |
 | `scripts/relay-feed.sh` | Feeds a relay from Zcash peers. |
 | `abi/` | ABI JSON for TypeScript and other clients. |
 | `research/relay-synthetic-headers/` | The solver behind the synthetic test headers (genuine Equihash solutions at Testnet's minimum difficulty). |

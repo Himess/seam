@@ -71,7 +71,8 @@ echo "work per block: $((W / 100))"
 ```
 
 On 29 October 2026 the 100 blocks up to Zcash Testnet block 4,555,510 added 35,561,993 work: about 355,600 a block,
-so 10 blocks ≈ 3,556,000.
+so 10 blocks ≈ 3,556,000. On Mainnet (`RELAY=0x527B6347d2392d17fa5Bd13DF88A43676501BE48`) the 100 blocks up to 3,535,181 added
+259,156,774,611,907: about 2.59 × 10^12 a block.
 [`ZcashFinalityGate`](../contracts/src/examples/ZcashFinalityGate.sol) packages the check.
 
 ## 5. Reorganisations

@@ -36,16 +36,17 @@ How the feeder works:
 
 ## Cost
 
-Measured on Seam's relay on 29 October 2026, from the feeder's receipts on Base Sepolia (`gasUsed`,
+Measured on Seam's relays on 29 October 2026, from the feeders' receipts on Base Sepolia (`gasUsed`,
 `effectiveGasPrice`, `l1Fee`) at a gas price of 0.005 to 0.006 gwei. The L1 data fee was under 0.01 % of each fee.
 
 | | Headers | Gas per header | ETH per header |
 |---|---|---|---|
 | Catching up, batches of 8 (the last one of 5) | 557, in 70 transactions | 604,805 | 0.00000341 |
 | Following the tip, 1 to 8 headers a batch | 15, in 4 transactions | 600,388 | 0.00000335 |
+| Mainnet, catching up before NU7 (17-block window) | 315, in 40 transactions | 578,105 | 0.00000321 |
 
 At NU7's 25-second blocks that is 3,456 headers and about **0.012 ETH a day**: 0.1 Base Sepolia ETH feeds a relay for
-about eight days.
+about eight days. Mainnet before NU7 has 75-second blocks: 1,152 headers and about 0.0037 ETH a day.
 
 ## Keep it running
 

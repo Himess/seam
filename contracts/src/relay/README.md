@@ -260,7 +260,7 @@ simulation too (with a simulated address). **Always set `DEPLOYMENT_NAME`:** a T
 to `deployments/base-sepolia.relay.json`, the record of Zecured's live run below, and any other network needs a name.
 The script refuses an NU7 height that is not a multiple of 3 (ZIP 259) and warns when it is `NEVER`.
 
-Two Testnet relays are recorded on Base Sepolia:
+Three relays are recorded on Base Sepolia:
 
 - **Zecured's live-run relay**
   [`0xEc34aA21cDe1366b397a99A4d90fc6B2f02cFaEa`](https://sepolia.basescan.org/address/0xEc34aA21cDe1366b397a99A4d90fc6B2f02cFaEa#code):
@@ -271,5 +271,12 @@ Two Testnet relays are recorded on Base Sepolia:
   checkpoint 4,554,953, deployed on 29 October 2026 (`deployments/seam-base-sepolia.relay.json` and
   `seam-base-sepolia.relay-checkpoint.json`, checked by `test/deployments/SeamBaseSepolia.t.sol`). It follows Zcash
   Testnet; the repository's [README](../../../README.md) says how it is fed.
+- **Seam's Mainnet relay**
+  [`0x527B6347d2392d17fa5Bd13DF88A43676501BE48`](https://sepolia.basescan.org/address/0x527B6347d2392d17fa5Bd13DF88A43676501BE48#code):
+  Mainnet parameters with NU7 at 3,543,405, checkpoint 3,534,866, deployed on 29 October 2026
+  (`deployments/seam-base-sepolia-mainnet.relay.json` and `seam-base-sepolia-mainnet.relay-checkpoint.json`, checked
+  by `test/deployments/SeamBaseSepoliaMainnet.t.sol`). Zebra 7.0.0's checkpoint list ends at 3,522,460, below any
+  recent block, so the checkpoint was compared with CipherScan and the 12,706 headers from 3,522,460 up to the tip on
+  that day were checked with `tools/zcash_header_check.py chain --network mainnet --equihash`.
 
 Nothing here is a mock: the relay verifies real proof of work, and the synthetic data exists only in tests.
