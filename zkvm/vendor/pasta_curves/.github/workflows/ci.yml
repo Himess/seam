@@ -1,0 +1,175 @@
+name: CI checks
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }} with ${{ matrix.features }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+        features: [--all-features, --no-default-features]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The release runs keep the debug assertions, which check the backend's operand contracts,
+      # and overflow checks. Neither can hide a failure. With the `asm` feature, a further run
+      # tests the release profile as shipped. That run is needed because the assertions change
+      # the code around each `asm!` block, which can affect the compiler's register allocation.
+      - name: Run tests (release, with the debug assertions)
+        env:
+          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: true
+          CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS: true
+        run: cargo test --verbose --release ${{ matrix.features }}
+      - name: Run tests (release, as shipped)
+        if: matrix.features == '--all-features'
+        run: cargo test --verbose --release --all-features
+      - name: Verify working directory is clean
+        run: git diff --exit-code
+
+  test-32-bit:
+    name: Test on i686-unknown-linux-gnu with ${{ matrix.features }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        features: [--all-features, --no-default-features]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install cross-platform support dependencies
+        run: |
+          sudo apt update
+          sudo apt install gcc-multilib
+      - run: rustup target add i686-unknown-linux-gnu
+      - name: Run tests
+        run: >
+          cargo test
+          --verbose
+          --target i686-unknown-linux-gnu
+          ${{ matrix.features }}
+      - name: Verify working directory is clean
+        run: git diff --exit-code
+
+  no-std:
+    name: Check no-std target ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - thumbv6m-none-eabi
+          - wasm32-unknown-unknown
+          - wasm32-wasip1
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup target add ${{ matrix.target }}
+      - name: Build
+        run: >
+          cargo build
+          --verbose
+          --target ${{ matrix.target }}
+          --no-default-features
+      - name: Build with zeroize
+        run: >
+          cargo build
+          --verbose
+          --target ${{ matrix.target }}
+          --no-default-features
+          --features zeroize
+
+  bitrot:
+    name: Bitrot check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Build benchmarks to prevent bitrot
+      - name: Build benchmarks
+        run: cargo build --benches --all-features
+
+  book:
+    name: Book tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: cargo build
+      - name: Setup mdBook
+        uses: peaceiris/actions-mdbook@ee69d230fe19748b7abf22df32acaa93833fad08 # v2.0.0
+        with:
+          mdbook-version: '0.4.5'
+      - name: Test Pasta book
+        run: mdbook test -L target/debug/deps book/
+
+  codecov:
+    name: Code coverage
+    runs-on: ubuntu-latest
+    container:
+      image: xd009642/tarpaulin:develop-nightly
+      options: --security-opt seccomp=unconfined
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Generate coverage report
+        run: cargo tarpaulin --engine llvm --all-features --timeout 600 --out Xml
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6.0.1
+
+  doc-links:
+    name: Intra-doc links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: cargo fetch
+      # Requires #![deny(rustdoc::broken_intra_doc_links)] in crates.
+      - name: Check intra-doc links
+        run: cargo doc --all-features --document-private-items
+
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: cargo fmt -- --check
+
+  required:
+    name: Required status checks have passed
+    # The `codecov` job is excluded because it depends on an external
+    # service; `fmt`, `book`, and `doc-links` are excluded so that they
+    # remain visible as their own separately-required checks.
+    needs:
+      - test
+      - test-32-bit
+      - no-std
+      - bitrot
+    # `always()` is load-bearing: without it this job is skipped when a
+    # needed job fails, and GitHub treats a skipped required check as
+    # satisfied.
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine whether all required-pass jobs succeeded
+        # `needs` is bound through the environment rather than interpolated
+        # into the script, so its contents can never be parsed as shell.
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -e 'to_entries | all(.value.result == "success")'

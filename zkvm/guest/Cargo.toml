@@ -1,0 +1,26 @@
+[package]
+name = "payment"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+# Its own workspace and Cargo.lock: risc0-build compiles the guest alone, for the zkVM target.
+[workspace]
+
+[dependencies]
+risc0-zkvm = { version = "=3.0.6", default-features = false, features = ["std"] }
+seam-payment = { path = "../../crates/seam-payment" }
+bincode = "1"
+
+[features]
+# The network the guest proves on is a build parameter: Testnet by default, Mainnet with this feature (seam-zkvm-methods
+# passes it when built with its own `mainnet`).
+mainnet = ["seam-payment/mainnet"]
+
+[profile.release]
+lto = true
+
+# Pallas / Vesta field arithmetic through RISC Zero's bigint2 accelerator (see the vendored crate's SEAM_PATCH.md).
+[patch.crates-io]
+pasta_curves = { path = "../vendor/pasta_curves" }
