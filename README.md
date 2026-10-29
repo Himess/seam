@@ -155,9 +155,9 @@ cd seam/contracts
 forge test
 ```
 
-Two tests need an RPC URL and skip themselves without it:
+Three tests need an RPC URL and skip themselves without it:
 - the Base mainnet gas measurement (`BASE_MAINNET_RPC_URL`);
-- the live check of the Seam relay (`BASE_SEPOLIA_RPC_URL`).
+- the live checks of the two Seam relays (`BASE_SEPOLIA_RPC_URL`).
 
 ## Roadmap
 

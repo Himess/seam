@@ -26,7 +26,7 @@ jobs:
           version: v1.8.5
       - name: Build
         run: forge build --sizes
-      - name: Tests (two skip themselves without an RPC URL)
+      - name: Tests (three skip themselves without an RPC URL)
         run: forge test -vv
       - name: Formatting of the new Solidity (the relay keeps Zecured's bytes)
         run: forge fmt --check src/interfaces src/examples test/examples test/deployments

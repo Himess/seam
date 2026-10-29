@@ -1,0 +1,10 @@
+{
+  "ZcashHeaderRelay": "0x527B6347d2392d17fa5Bd13DF88A43676501BE48",
+  "chainId": 84532,
+  "checkpointHash": "0x6b7fa60ee48149e851cf20a79a215372807a2c91d0a639b4a6e66d0000000000",
+  "checkpointHeight": 3534866,
+  "networkId": "0xe57e1b52ec0323cedefa4a533426e1db9f73a390bbb7109d783b63b306c82717",
+  "nu7ActivationHeight": 3543405,
+  "parameters": "config/relay-mainnet.json",
+  "zcashNetwork": "zcash-mainnet"
+}
