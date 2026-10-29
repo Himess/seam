@@ -38,6 +38,7 @@ NETWORKS = {
         "magic": bytes.fromhex("fa1af9bf"),
         "port": 18233,
         "seeders": ["dnsseed.testnet.z.cash", "testnet.seeder.zfnd.org"],
+        "protocol": 170180,
     },
     "mainnet": {
         "magic": bytes.fromhex("24e92764"),
@@ -49,12 +50,13 @@ NETWORKS = {
             "mainnet.seeder.shieldedinfra.net",
             "seeder.zec.rocks",
         ],
+        "protocol": 170190,
     },
 }
-# Zebra 7.0.0-rc.0 advertises CURRENT_NETWORK_PROTOCOL_VERSION = 170180 on both networks
-# (zebra-network/src/constants.rs). It is ZIP 259's NU7 version on Testnet; Mainnet peers require at
-# least NU6.3's 170160 (zebra-network/src/protocol/external/types.rs `min_specified_for_upgrade`).
-PROTOCOL_VERSION = 170180
+# Each network announces ZIP 259's MIN_NETWORK_PROTOCOL_VERSION for NU7 ("protocol" above): 170180 on Testnet,
+# 170190 on Mainnet, where peers disconnect lower versions once NU7 activates (Zebra 7.0.0,
+# zebra-network/src/protocol/external/types.rs `min_specified_for_upgrade`). Zebra 7.0.0 itself advertises
+# CURRENT_NETWORK_PROTOCOL_VERSION = 170190 on both networks (zebra-network/src/constants.rs).
 HEADER_PREFIX_LEN = 140
 SOLUTION_LEN = 1344
 HEADER_LEN = HEADER_PREFIX_LEN + 3 + SOLUTION_LEN  # 1487
@@ -96,8 +98,8 @@ def net_addr(ip: str = "0.0.0.0", port: int = 0) -> bytes:
 
 
 class Peer:
-    def __init__(self, host: str, port: int, magic: bytes, timeout: float = 20.0):
-        self.host, self.port, self.magic = host, port, magic
+    def __init__(self, host: str, port: int, magic: bytes, protocol: int, timeout: float = 20.0):
+        self.host, self.port, self.magic, self.protocol = host, port, magic, protocol
         self.sock = socket.create_connection((host, port), timeout=timeout)
         self.sock.settimeout(timeout)
         self.buf = b""
@@ -130,7 +132,7 @@ class Peer:
 
     def handshake(self) -> None:
         payload = (
-            struct.pack("<iQq", PROTOCOL_VERSION, 0, int(time.time()))
+            struct.pack("<iQq", self.protocol, 0, int(time.time()))
             + net_addr(self.host if self._is_ipv4(self.host) else "0.0.0.0", self.port)
             + net_addr()
             + struct.pack("<Q", random.getrandbits(64))
@@ -163,7 +165,7 @@ class Peer:
             return False
 
     def get_headers(self, locator_internal: bytes):
-        payload = struct.pack("<I", PROTOCOL_VERSION) + varint(1) + locator_internal + b"\x00" * 32
+        payload = struct.pack("<I", self.protocol) + varint(1) + locator_internal + b"\x00" * 32
         self.send("getheaders", payload)
         deadline = time.time() + 60
         while time.time() < deadline:
@@ -243,7 +245,7 @@ def main() -> int:
                 print("ran out of peers", file=sys.stderr)
                 return 1
             try:
-                peer = Peer(host, port, network["magic"])
+                peer = Peer(host, port, network["magic"], network["protocol"])
                 peer.handshake()
                 described = f"{host}:{port} (protocol {peer.remote_version}, {peer.remote_agent})"
                 print(f"connected to {described}", file=sys.stderr)

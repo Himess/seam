@@ -35,12 +35,13 @@ import time
 import urllib.request
 
 CONTEXT = 102 + 11  # PoWAveragingWindow (NU7) + PoWMedianBlockSpan
+# "protocol": the version zcash_p2p_headers.py announces on that network.
 NETWORKS = {
     "testnet": {"name": "Zcash Testnet", "cipherscan": "https://api.testnet.cipherscan.app/api/block/{}",
-                "nu7_activation_height": 4465026},
+                "nu7_activation_height": 4465026, "protocol": 170180},
     # Mainnet NU7 height: ZIP 259 and Zebra 7.0.0 (zebra-chain/src/parameters/constants.rs).
     "mainnet": {"name": "Zcash Mainnet", "cipherscan": "https://api.mainnet.cipherscan.app/api/block/{}",
-                "nu7_activation_height": 3543405},
+                "nu7_activation_height": 3543405, "protocol": 170190},
 }
 
 
@@ -165,7 +166,7 @@ def main() -> int:
     cp_item = by_height[cp]
     kind = net["name"].split()[-1]
     source = {
-        "headers": f"Zcash {kind} P2P network, `getheaders` (protocol 170180) via "
+        "headers": f"Zcash {kind} P2P network, `getheaders` (protocol {net['protocol']}) via "
         f"contracts/test/relay/tools/zcash_p2p_headers.py from public {kind} peer(s) found via the DNS seeders: "
         + "; ".join(peers),
         "fetched": datetime.date.today().isoformat(),
