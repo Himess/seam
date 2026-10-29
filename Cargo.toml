@@ -11,9 +11,15 @@ default-members = ["crates/seam-payment", "crates/seam-chain"]
 edition = "2024"
 license = "MIT"
 
-# The statement's elliptic-curve and hash work is unusably slow in tests without optimization.
+# The statement's elliptic-curve and hash work is unusably slow in tests without optimization. Debug info: line tables
+# for Seam's crates (enough for backtraces) and none for dependencies, whose full debug info (the light wallet client,
+# Halo 2 and the rest of the Zcash stack seam-chain pulls in) takes gigabytes of disk.
 [profile.dev]
 opt-level = 3
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
 
 [profile.release]
 debug = 1

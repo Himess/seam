@@ -6,11 +6,25 @@
 //! public chain data and checks it against the real headers. Ported from Zecured's witness builder
 //! (`signer/crates/deposit-witness` at 73de9f909e270e8aea10c2b221905f62a6a4c4df), which built payment witnesses from
 //! real Testnet data on 27 October 2026.
+//!
+//! - [`p2p`] and [`headers`]: the epoch's headers from the peer-to-peer network, in a checked header file;
+//! - [`lwd`] and [`chain`]: compact blocks and tree states from a light wallet server, and the per-block summaries a
+//!   history-tree leaf records, in a checked cache;
+//! - [`history`] and [`mmr`]: the history tree, a leaf's path and the peaks, and a block's txid and auth data trees;
+//! - [`locate`]: a transaction's place under an anchor header T;
+//! - [`witness`]: the payment witness, from the payer's opening or the receiver's viewing key.
+//!
+//! Nothing here prints. Errors name heights and counts, never a receiver, a salt, a key or a peer's address, and
+//! never the height of the block that holds a payment.
 
+pub mod chain;
 pub mod headers;
 pub mod history;
+pub mod locate;
+pub mod lwd;
 pub mod mmr;
 pub mod network;
 pub mod p2p;
+pub mod witness;
 
 pub use network::{Epoch, ZcashNetwork};
