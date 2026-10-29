@@ -5,65 +5,40 @@ libs = ["lib"]
 test = "test"
 script = "script"
 solc_version = "0.8.28"
-# Cancun: EIP-1153 transient storage (TSTORE/TLOAD) for the zZEC "expected transfer from Morpho" guard.
-# Live Base Sepolia executes TSTORE/TLOAD (checked with eth_call on 2026-10-10, see docs/spikes/SPIKE_C.md).
+# Cancun, as on Base.
 evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
-# script/DeployZecured.s.sol reads config/zecured-<network>.json and writes deployments/<network>.json (or
-# <network>.dry-run.json in a simulation). test/relay reads its Zcash header fixtures (read-only);
-# script/DeployRelay.s.sol and test/relay read the relay's network parameters in config/ (read-only).
+# script/DeployRelay.s.sol reads a parameter file in config/ and a checkpoint file, and writes
+# deployments/<name>.relay.json (a simulation too). The tests read the header fixtures in test/relay/fixtures, the
+# parameter files and the deployment records (read-only).
 fs_permissions = [
     { access = "read-write", path = "./deployments" },
     { access = "read", path = "./config" },
     { access = "read", path = "./test/relay/fixtures" },
-    { access = "read", path = "./script/artifacts" },
 ]
 # Static test linking. Forge >= 1.x links test code dynamically by default and rewrites `new` of a src/ contract into
 # `deployCode`: then `vm.expectRevert` followed by a reverting `new` ends the test as a pass and silently skips every
-# later check in it (reproduced with Foundry 1.8.5). Halmos needs static linking too (profile below).
+# later check in it (reproduced with Foundry 1.8.5).
 dynamic_test_linking = false
-# Explicit remappings only: morpho-blue and openzeppelin ship their own nested forge-std copies,
-# auto-detection could otherwise pick the wrong one.
+# Explicit remappings only: openzeppelin-contracts ships its own nested forge-std copy, and auto-detection could
+# otherwise pick the wrong one.
 auto_detect_remappings = false
 remappings = [
     "forge-std/=lib/forge-std/src/",
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
-    "morpho-blue/=lib/morpho-blue/",
 ]
 
 [profile.default.fuzz]
 runs = 256
 
-[profile.default.invariant]
-# The invariant suite runs against the real Morpho Blue on a Base Sepolia fork, so the campaign is kept small.
-# Deeper runs: FOUNDRY_INVARIANT_RUNS=256 FOUNDRY_INVARIANT_DEPTH=100 forge test --isolate --match-path 'test/invariant/*'
-runs = 32
-depth = 50
-# Handler actions that may legitimately revert use try/catch, so any other revert is a failure.
-fail_on_revert = true
-
-[profile.halmos]
-# Symbolic checks (docs/TESTING.md § 1b): `FOUNDRY_PROFILE=halmos halmos`, settings in halmos.toml.
-# Only test/halmos is built, into its own directories; nothing there needs a fork.
-test = "test/halmos"
-out = "out/halmos"
-cache_path = "cache/halmos"
-# Forge >= 1.x links test code dynamically by default and rewrites `new` into `deployCode`, which Halmos 0.3.3
-# cannot execute (5 zZEC guard checks fail in setUp). Halmos needs the classic static linking.
-dynamic_test_linking = false
-
-[rpc_endpoints]
-# Fork tests read BASE_SEPOLIA_RPC_URL directly and fall back to https://sepolia.base.org when unset.
-base_sepolia = "${BASE_SEPOLIA_RPC_URL}"
-
 [fmt]
 line_length = 120
 
 [lint]
-# Style lints apply to src/ only; tests and the throwaway spike helpers are exempt.
+# Style lints apply to src/ only; tests are exempt.
 ignore = ["test/**/*.sol"]
-# - screaming-snake-case-immutable: public immutables (registry(), adapter(), morpho(), ...) are part of the ABI in
-#   docs/INTERFACES.md and keep their camelCase names.
-# - asm-keccak256: plain keccak256(abi.encode(...)) is kept for readability (EIP-712 hashing must be auditable).
+# - screaming-snake-case-immutable: the relay's public immutables (networkId(), checkpointHash(), checkpointHeight())
+#   are part of its ABI and keep their camelCase names.
+# - asm-keccak256: plain keccak256 is kept for readability (the network ids are keccak256 of their names).
 exclude_lints = ["screaming-snake-case-immutable", "asm-keccak256"]
