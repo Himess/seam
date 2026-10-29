@@ -2,10 +2,10 @@
 # zkVM guest is its own workspace (zkvm/guest), built by risc0-build.
 [workspace]
 resolver = "2"
-members = ["crates/seam-payment", "crates/seam-chain", "zkvm/methods"]
+members = ["crates/seam-payment", "crates/seam-chain", "crates/seam-cli", "zkvm/methods"]
 # risc0-build does not build on Windows: a plain `cargo build` or `cargo test` leaves the guest crate out, and
 # `cargo build -p seam-zkvm-methods` builds it on Linux or macOS (RISC0_SKIP_BUILD=1 skips the guest itself).
-default-members = ["crates/seam-payment", "crates/seam-chain"]
+default-members = ["crates/seam-payment", "crates/seam-chain", "crates/seam-cli"]
 
 [workspace.package]
 edition = "2024"
