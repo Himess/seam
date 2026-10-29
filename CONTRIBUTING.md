@@ -14,7 +14,7 @@ git clone --recursive https://github.com/Himess/seam
 cd seam/contracts
 forge build
 forge test
-forge fmt --check src/interfaces src/examples test/examples test/deployments
+forge fmt --check src/interfaces src/examples src/payment test/examples test/deployments test/payment
 ```
 
 ## Changes

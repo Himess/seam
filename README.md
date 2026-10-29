@@ -164,6 +164,13 @@ Three tests need an RPC URL and skip themselves without it:
 - the Base mainnet gas measurement (`BASE_MAINNET_RPC_URL`);
 - the live checks of the two Seam relays (`BASE_SEPOLIA_RPC_URL`).
 
+**Mocks.** The payment tests use three, in `contracts/test/payment/Mocks.sol`, each labelled MOCK and refused outside a
+local chain (chain id 31337):
+- `MockRiscZeroVerifier`, a RISC Zero router that accepts the seal `selector || imageId || journalDigest` and verifies
+  no proof;
+- `MockToken`, an ERC-20 anyone can mint;
+- `MockFeeToken`, an ERC-20 that keeps 1 % of each transfer, which the escrow must refuse.
+
 ## Roadmap
 
 1. **Zcash Mainnet across NU7:** the activation height, tests on real headers across it, and a Base Sepolia relay that

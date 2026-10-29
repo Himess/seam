@@ -29,7 +29,7 @@ jobs:
       - name: Tests (three skip themselves without an RPC URL)
         run: forge test -vv
       - name: Formatting of the new Solidity (the relay keeps Zecured's bytes)
-        run: forge fmt --check src/interfaces src/examples test/examples test/deployments
+        run: forge fmt --check src/interfaces src/examples src/payment test/examples test/deployments test/payment
       - name: ABI files are current
         run: |
           forge inspect src/relay/ZcashHeaderRelay.sol:ZcashHeaderRelay abi --json > ../abi/ZcashHeaderRelay.json
