@@ -24,6 +24,10 @@ use crate::{locate::Located, network::ZcashNetwork};
 /// the nullifier the same action spends).
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Opening {
+    /// The payment transaction's id, as block explorers show it, when the payer recorded it with the opening (`seam
+    /// pay` does): a txid stays out of logs, so the opening file carries it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub txid: Option<String>,
     /// The action's index in the transaction's Ironwood bundle.
     pub action_index: u32,
     /// The 43-byte raw Orchard-protocol receiver (hex).
@@ -100,6 +104,7 @@ pub fn find_payments(tx: &Transaction, fvk: &FullViewingKey) -> Result<Vec<Found
         if let Some(payment_ref) = memo_payment_ref(&memo) {
             out.push(Found {
                 opening: Opening {
+                    txid: None,
                     action_index: u32::try_from(i)?,
                     receiver: note.recipient().to_raw_address_bytes(),
                     value: note.value().inner(),
@@ -168,6 +173,7 @@ mod tests {
 
     fn fixture_opening(action_index: u32) -> Opening {
         Opening {
+            txid: None,
             action_index,
             receiver: fixture_receiver(),
             value: FIXTURE_VALUE,
@@ -234,8 +240,17 @@ mod tests {
         assert_eq!(json["receiver"], hex::encode(fixture_receiver()));
         assert_eq!(json["rseed"], hex::encode(FIXTURE_RSEED));
         assert_eq!(json["value"], FIXTURE_VALUE);
+        assert!(json.get("txid").is_none(), "no txid, no field");
         assert_eq!(serde_json::from_value::<Opening>(json).unwrap(), o);
-        let shown = format!("{o:?}");
+        let with_txid = Opening {
+            txid: Some("ab".repeat(32)),
+            ..o.clone()
+        };
+        let json = serde_json::to_value(&with_txid).unwrap();
+        assert_eq!(json["txid"], "ab".repeat(32));
+        assert_eq!(serde_json::from_value::<Opening>(json).unwrap(), with_txid);
+        let shown = format!("{with_txid:?}");
         assert!(!shown.contains(&hex::encode(fixture_receiver())) && !shown.contains("receiver"));
+        assert!(!shown.contains("abab"), "no txid in a debug print");
     }
 }

@@ -3599,6 +3599,7 @@ dependencies = [
  "visibility",
  "zcash_note_encryption",
  "zcash_spec",
+ "zeroize",
  "zip32",
 ]
 
@@ -3689,6 +3690,37 @@ name = "pastey"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
+
+[[package]]
+name = "pczt"
+version = "0.10.0-pre.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fbb353f91d5caf22e351cc75e6c531b2a74b7cfbef5274c6ce7d1859a0ab30b4"
+dependencies = [
+ "blake2b_simd",
+ "bls12_381",
+ "document-features",
+ "ff 0.14.0",
+ "getset",
+ "jubjub",
+ "nonempty",
+ "orchard",
+ "pasta_curves",
+ "postcard",
+ "rand_core 0.10.1",
+ "redjubjub",
+ "sapling-crypto",
+ "secp256k1",
+ "serde",
+ "serde_with",
+ "subtle",
+ "zcash_note_encryption",
+ "zcash_primitives",
+ "zcash_protocol",
+ "zcash_script",
+ "zcash_transparent",
+ "zeroize",
+]
 
 [[package]]
 name = "pem-rfc7468"
@@ -4922,7 +4954,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5054,6 +5086,7 @@ dependencies = [
  "tracing",
  "zcash_note_encryption",
  "zcash_spec",
+ "zeroize",
  "zip32",
 ]
 
@@ -5096,7 +5129,9 @@ dependencies = [
  "hex",
  "incrementalmerkletree",
  "orchard",
+ "pczt",
  "primitive-types",
+ "rand 0.10.3",
  "rand_core 0.6.4",
  "sapling-crypto",
  "seam-payment",
@@ -6896,6 +6931,7 @@ dependencies = [
  "memuse",
  "subtle",
  "zcash_spec",
+ "zeroize",
 ]
 
 [[package]]

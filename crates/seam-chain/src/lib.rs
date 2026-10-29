@@ -12,7 +12,8 @@
 //!   history-tree leaf records, in a checked cache;
 //! - [`history`] and [`mmr`]: the history tree, a leaf's path and the peaks, and a block's txid and auth data trees;
 //! - [`locate`]: a transaction's place under an anchor header T;
-//! - [`witness`]: the payment witness, from the payer's opening or the receiver's viewing key.
+//! - [`witness`]: the payment witness, from the payer's opening or the receiver's viewing key;
+//! - [`scan`] and [`pay`]: a disposable wallet's notes, and a payment from it with the Seam memo and `ovk = None`.
 //!
 //! Nothing here prints. Errors name heights and counts, never a receiver, a salt, a key or a peer's address, and
 //! never the height of the block that holds a payment.
@@ -25,6 +26,8 @@ pub mod lwd;
 pub mod mmr;
 pub mod network;
 pub mod p2p;
+pub mod pay;
+pub mod scan;
 pub mod witness;
 
 pub use network::{Epoch, ZcashNetwork};

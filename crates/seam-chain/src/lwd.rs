@@ -14,7 +14,7 @@ use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 use zcash_client_backend::proto::{
     compact_formats::CompactBlock,
     service::{
-        self, BlockId, BlockRange, ChainSpec, Empty, TreeState, TxFilter,
+        self, BlockId, BlockRange, ChainSpec, Empty, RawTransaction, TreeState, TxFilter,
         compact_tx_streamer_client::CompactTxStreamerClient,
     },
 };
@@ -145,4 +145,52 @@ pub async fn tree_state(client: &mut LwdClient, height: u32) -> Result<TreeState
         .into_inner();
     ensure!(state.height == u64::from(height), "the server sent the tree state of {} for {height}", state.height);
     Ok(state)
+}
+
+/// Sends a serialized transaction through the server.
+pub async fn send_transaction(client: &mut LwdClient, data: Vec<u8>) -> Result<()> {
+    let response = client
+        .send_transaction(RawTransaction { data, height: 0 })
+        .await
+        .map_err(|s| anyhow!("SendTransaction failed ({:?})", s.code()))?
+        .into_inner();
+    ensure!(
+        response.error_code == 0,
+        "the light wallet server refused the transaction: {} ({})",
+        without_txids(&response.error_message),
+        response.error_code
+    );
+    Ok(())
+}
+
+/// A server's message with every run of 64 hex digits (a txid, say) replaced by `<hash>`: no txid reaches a log.
+pub fn without_txids(message: &str) -> String {
+    let mut out = String::with_capacity(message.len());
+    let mut run = String::new();
+    for c in message.chars().chain(std::iter::once(' ')) {
+        if c.is_ascii_hexdigit() {
+            run.push(c);
+            continue;
+        }
+        out.push_str(if run.len() >= 64 { "<hash>" } else { &run });
+        run.clear();
+        out.push(c);
+    }
+    out.pop();
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn server_messages_lose_their_txids() {
+        let txid = "0123456789abcdef".repeat(4);
+        assert_eq!(without_txids(&format!("txn-already-known {txid}")), "txn-already-known <hash>");
+        assert_eq!(without_txids(&format!("{txid}:bad")), "<hash>:bad");
+        assert_eq!(without_txids("bad-txns-oversize (code 16)"), "bad-txns-oversize (code 16)");
+        assert_eq!(without_txids(""), "");
+        assert_eq!(without_txids("deadbeef"), "deadbeef");
+    }
 }

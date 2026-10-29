@@ -27,6 +27,17 @@ zcash_client_backend = { version = "=0.25.0-pre.1", default-features = false, fe
 ] }
 tonic = { version = "0.14", default-features = false, features = ["transport", "tls-ring", "tls-webpki-roots"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+# A payment: the PCZT roles from building to extraction, as Zecured's zcash-ops used them, with their RNG.
+pczt = { version = "=0.10.0-pre.1", default-features = false, features = [
+    "std",
+    "orchard",
+    "zcp-builder",
+    "io-finalizer",
+    "prover",
+    "signer",
+    "tx-extractor",
+] }
+rand = "0.10"
 primitive-types = { version = "0.12", default-features = false }
 blake2b_simd = "1"
 anyhow = "1"
