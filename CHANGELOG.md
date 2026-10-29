@@ -7,6 +7,7 @@
   `build_fixture.py` use the same height.
 - `zcash_p2p_headers.py` announces ZIP 259's NU7 protocol version for each network: 170180 on Testnet, 170190 on
   Mainnet, where peers drop lower versions once NU7 activates.
+- `scripts/relay-feed.sh` reads the relay's `networkId()` and feeds a Mainnet relay from Mainnet peers.
 
 ## v0.1.0 (2026-10-29)
 

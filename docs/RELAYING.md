@@ -11,7 +11,7 @@ A relay knows only the headers someone submits.
 You need:
 - Foundry's `cast`;
 - Python 3 (standard library only);
-- outbound TCP to Zcash Testnet peers (port 18233);
+- outbound TCP to Zcash peers (port 18233 on Testnet, 8233 on Mainnet);
 - a Base Sepolia RPC URL;
 - a key that holds a little Base Sepolia ETH.
 
@@ -22,7 +22,8 @@ scripts/relay-feed.sh <relay address>           # keeps following; waits 25 s wh
 ```
 
 How the feeder works:
-- **Each batch:** it reads the relay's tip and fetches the next headers from public Zcash peers over the P2P protocol.
+- **Each batch:** it reads the relay's tip and fetches the next headers over the P2P protocol from public peers of the
+  relay's network: Mainnet if `networkId()` is `keccak256("zcash-mainnet")`, Testnet otherwise.
   The fetch is read-only: [`zcash_p2p_headers.py`](../contracts/test/relay/tools/zcash_p2p_headers.py). It then drops
   the headers the relay already has and submits the rest in one transaction.
 - **On a Zcash reorganisation:** if the peers no longer continue from the relay's tip, it steps back up to 20 blocks;

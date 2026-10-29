@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Keeps a ZcashHeaderRelay in step with the Zcash Testnet. Reads the relay's best tip, fetches the
-# headers that follow it from public Testnet peers over the P2P protocol (read-only:
+# Keeps a ZcashHeaderRelay in step with its Zcash network: Mainnet if the relay's networkId() is
+# keccak256("zcash-mainnet"), Testnet otherwise. Reads the relay's best tip, fetches the headers that
+# follow it from that network's public peers over the P2P protocol (read-only:
 # contracts/test/relay/tools/zcash_p2p_headers.py) and submits them in batches. Submitting headers
 # is permissionless: the relay checks every one itself (Equihash, difficulty, time, linkage).
 #
@@ -32,13 +33,18 @@ trap 'rm -rf "$TMP"' EXIT
 first_word() { awk 'NR==1 {print $1}'; }
 display_order() { python3 -I -c 'import sys; print(bytes.fromhex(sys.argv[1][2:])[::-1].hex())' "$1"; }
 
+NETWORK=testnet
+if [[ "$(cast call --rpc-url "$RPC" "$RELAY" "networkId()(bytes32)")" == "$(cast keccak zcash-mainnet)" ]]; then
+  NETWORK=mainnet
+fi
+
 back=0
 while true; do
   tip_height="$(cast call --rpc-url "$RPC" "$RELAY" "bestChainTip()(bytes32,uint256,uint256)" | sed -n 2p | first_word)"
   from_height=$((tip_height - back))
   from_hash="$(cast call --rpc-url "$RPC" "$RELAY" "bestBlockHashAt(uint256)(bytes32)" "$from_height")"
   rm -f "$TMP/headers.jsonl"
-  python3 -I "$FETCH" --from-hash "$(display_order "$from_hash")" --from-height "$from_height" \
+  python3 -I "$FETCH" --network "$NETWORK" --from-hash "$(display_order "$from_hash")" --from-height "$from_height" \
     --count "$BATCH" --out "$TMP/headers.jsonl" 2> "$TMP/fetch.log" || true
   count=0
   [[ -f "$TMP/headers.jsonl" ]] && count="$(wc -l < "$TMP/headers.jsonl" | tr -d ' ')"
