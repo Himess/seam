@@ -260,7 +260,11 @@ pub async fn locate(
     let header_hash = |h: u32| loaded.headers.get(h).map(|x| x.hash).context("a header of the file");
     let stale =
         || format!("the header file is not the light wallet server's chain: delete {}", files.headers.display());
-    let block = lwd::compact_blocks(client, height, height).await?.remove(0);
+    // The server's error would name B's height: it is replaced.
+    let block = lwd::compact_blocks(client, height, height)
+        .await
+        .map_err(|_| anyhow!("the light wallet server did not send the payment's block"))?
+        .remove(0);
     ensure!(block.hash == header_hash(height)?, "{}", stale());
     let block_txids = block.vtx.iter().map(|t| txid_bytes(&t.txid)).collect::<Result<Vec<_>>>()?;
     let tip_block = lwd::compact_blocks(client, tip, tip).await?.remove(0);
