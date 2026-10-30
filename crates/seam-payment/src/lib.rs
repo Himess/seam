@@ -62,7 +62,7 @@ pub const MEMO_BINDING_LENGTH: usize = MEMO_PREFIX.len() + 64;
 pub const MEMO_LENGTH: usize = 512;
 
 /// The private input of a payment proof.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PaymentWitness {
     /// Consensus branch ID of the epoch of block B and header T (one the build allows).
     pub branch_id: u32,
@@ -91,6 +91,14 @@ pub struct PaymentWitness {
     /// The later header T and its block's auth data root (ZIP 244).
     pub tip_header: Vec<u8>,
     pub tip_auth_data_root: [u8; 32],
+}
+
+/// The epoch alone in a debug print, which may end up in a log: a witness holds the payment's transaction, the note's
+/// opening and the salt.
+impl core::fmt::Debug for PaymentWitness {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("PaymentWitness").field("branch_id", &self.branch_id).finish_non_exhaustive()
+    }
 }
 
 /// The public output of a payment proof (the zkVM journal).

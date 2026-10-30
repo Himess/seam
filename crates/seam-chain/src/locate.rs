@@ -25,7 +25,7 @@ use crate::{
 };
 
 /// A transaction and where it is, under header T.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Located {
     /// The Zcash network the transaction was read from, and its epoch.
     pub network: ZcashNetwork,
@@ -49,6 +49,18 @@ pub struct Located {
     pub tip_height: u32,
     pub tip_header: Vec<u8>,
     pub tip_auth_data_root: [u8; 32],
+}
+
+/// Public data alone in a debug print, which may end up in a log: the network, the epoch and T's height, never the
+/// transaction or its block.
+impl std::fmt::Debug for Located {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Located")
+            .field("network", &self.network)
+            .field("epoch", &self.epoch)
+            .field("tip_height", &self.tip_height)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Located {

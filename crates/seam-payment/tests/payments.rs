@@ -109,6 +109,12 @@ fn the_synthetic_payment_proves() {
     assert_eq!(verify_on(&MAINNET, &w), Ok(j));
 }
 
+/// A witness's debug print shows its epoch alone: no transaction, receiver, rseed or salt.
+#[test]
+fn a_witness_debug_print_shows_the_epoch_alone() {
+    assert_eq!(format!("{:?}", base()), format!("PaymentWitness {{ branch_id: {NU7_BRANCH_ID}, .. }}"));
+}
+
 /// The real transaction under its real anchor, with the fixture's opening: the action carries another note.
 #[test]
 fn the_unchanged_transaction_does_not_open_to_the_fixture_note() {
