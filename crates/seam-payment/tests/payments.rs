@@ -3,7 +3,8 @@
 //! The fixture (`TEST-ONLY_testnet_ironwood_tx.json`) is public chain data: a real Ironwood-only v6 transaction mined
 //! in Zcash Testnet block 4,488,543 and its real inclusion data under header 4,488,560. These tests check that it is,
 //! then build the synthetic payment witness from it (`k4::synthesize`) and run the catalog of single changes on it for
-//! both networks. `seam parity` runs the same catalog in the RISC Zero executor.
+//! both networks. `seam parity` runs the same catalog in the RISC Zero executor. `TEST-ONLY_payment_witness.json` is a
+//! real payment's witness, between two disposable Testnet wallets.
 
 use std::fs;
 
@@ -27,6 +28,8 @@ const PUBLIC_TX: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/TES
 /// The relay's fixture whose first header is T, the public transaction's anchor.
 const ANCHOR_FIXTURE: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/../../contracts/test/relay/fixtures/testnet_deposit_anchor.json");
+/// The real Testnet payment's witness (TEST-ONLY: two disposable wallets).
+const REAL_WITNESS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/TEST-ONLY_payment_witness.json");
 
 fn public_tx() -> PublicTx {
     serde_json::from_slice(&fs::read(PUBLIC_TX).expect("fixture")).expect("public transaction JSON")
@@ -113,6 +116,33 @@ fn the_synthetic_payment_proves() {
 #[test]
 fn a_witness_debug_print_shows_the_epoch_alone() {
     assert_eq!(format!("{:?}", base()), format!("PaymentWitness {{ branch_id: {NU7_BRANCH_ID}, .. }}"));
+}
+
+/// A real payment: 0.01 TAZ between two disposable Testnet wallets on 30 October 2026, with the memo of the fork test's
+/// order (contracts/test/examples/ShieldedPaymentEscrowFork.t.sol), anchored at block 4,557,390, which was fixed before
+/// the payment was made. `seam witness` built this witness from the payer's opening and, the same bytes, from the
+/// receiver's viewing key. It proves on both networks' statements, to the journal the guest must commit.
+#[test]
+fn the_real_testnet_payment_proves() {
+    let w: PaymentWitness = serde_json::from_slice(&fs::read(REAL_WITNESS).expect("fixture")).expect("a witness");
+    let j = verify_on(&TESTNET, &w).expect("the real payment");
+    assert_eq!(j.branch_id, NU7_BRANCH_ID);
+    assert_eq!(display(&j.anchor), "000000c287c46c1f714dfcee970a4654300a099902b26e03975d817846ed3dcb");
+    assert_eq!(hex(&j.payment_ref), "39458b5c2bea9b8e50aa1e413970a4710aa096b57bd98c977fb2d060f973cb9f");
+    assert_eq!(hex(&j.receiver_commitment), "94a35f10c1b6b65cbf8962a7bd68ee1e4920841b8d529a41b71b036335a08245");
+    assert_eq!(j.zatoshi, 1_000_000);
+    assert_eq!(
+        hex(&j.abi_encode()),
+        concat!(
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            "0000000000000000000000000000000000000000000000000000000077190ad9",
+            "cb3ded4678815d97036eb20299090a3054460a97eefc4d711f6cc487c2000000",
+            "39458b5c2bea9b8e50aa1e413970a4710aa096b57bd98c977fb2d060f973cb9f",
+            "94a35f10c1b6b65cbf8962a7bd68ee1e4920841b8d529a41b71b036335a08245",
+            "00000000000000000000000000000000000000000000000000000000000f4240",
+        )
+    );
+    assert_eq!(verify_on(&MAINNET, &w), Ok(j));
 }
 
 /// The real transaction under its real anchor, with the fixture's opening: the action carries another note.

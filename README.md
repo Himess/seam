@@ -189,9 +189,12 @@ Testnet peers and a light wallet server are ignored; `crates/seam-chain/tests/ne
 guest builds on Linux or macOS only, with `cargo build -p seam-zkvm-methods`: reproducibly in RISC Zero's Docker
 builder with `SEAM_DOCKER_GUESTS=1`, otherwise with the local risc0 toolchain.
 
-**The statement's fixture is synthetic.** `crates/seam-payment/tests/fixtures/TEST-ONLY_testnet_ironwood_tx.json` holds
-public chain data only: a real Ironwood-only transaction mined on Zcash Testnet, with its inclusion data. The tests
-re-encrypt one of its notes as a payment to a test key and re-anchor it; `crates/seam-payment/src/k4.rs` explains how.
+**The statement's fixtures (TEST-ONLY).** Both are in `crates/seam-payment/tests/fixtures/`:
+- `TEST-ONLY_testnet_ironwood_tx.json` holds public chain data only: a real Ironwood-only transaction mined on Zcash
+  Testnet, with its inclusion data. The K4 catalog re-encrypts one of its notes as a payment to a test key and
+  re-anchors it; `crates/seam-payment/src/k4.rs` explains how.
+- `TEST-ONLY_payment_witness.json` is the witness of a real payment of 0.01 TAZ between two disposable Testnet
+  wallets, made on 30 October 2026 for the order of the fork test.
 
 **Mocks.** The payment tests use three, in `contracts/test/payment/Mocks.sol`, each labelled MOCK and refused outside a
 local chain (chain id 31337):
