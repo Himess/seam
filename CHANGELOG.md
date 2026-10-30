@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.3.0 (unreleased)
+
+Shielded payment proofs (docs/PAYMENTS.md), adapted from Zecured's payment path at `73de9f9`:
+- `crates/seam-payment`: the statement a payment proof proves. The memo binds a text reference, `seam1:` and 64
+  lowercase hex digits, that any wallet can send, and the journal opens with a version. Its K4 catalog: 50 single
+  changes to a witness for the Testnet statement and 51 for Mainnet's, each with the outcome it must have.
+- `zkvm/`: the RISC Zero guest (risc0 3.0.6), one per network, built in RISC Zero's Docker builder for reproducible
+  image ids, and the vendored `pasta_curves` with Zecured's zkVM patch.
+- `crates/seam-chain` and `crates/seam-cli`: the chain data a witness needs, from Zcash peers and a light wallet server;
+  `seam memo`, `seam pay` (Testnet, a disposable wallet), `seam witness` (from the payer's opening or the receiver's
+  viewing key) and, with the `zkvm` feature, the executor, the prover and the Groth16 wrap.
+- `ZcashPaymentVerifier`: checks a proof's seal through the RISC Zero router, for a pinned guest and selector, and its
+  anchor on a Seam relay's best chain. No owner, no upgrade.
+- `ShieldedPaymentEscrow` (example, not audited): an ERC-20 locked until a shielded ZEC payment for the order is
+  proven, with the payment's time judged on the Zcash side.
+
 ## v0.2.0 (unreleased)
 
 - `config/relay-mainnet.json` sets NU7's Mainnet height to 3,543,405 (ZIP 259, Zebra 7.0.0) instead of `NEVER`, so a

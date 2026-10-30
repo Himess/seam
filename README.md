@@ -69,7 +69,8 @@ Where to start:
   - choosing `minWork`;
   - reorganisations;
   - a relay that falls behind;
-  - what a header can and can't tell you.
+  - what a header can and can't tell you;
+  - shielded payments.
 - [`ZcashFinalityGate`](contracts/src/examples/ZcashFinalityGate.sol) is a small example to start from.
 - [`abi/`](abi) has the ABI for TypeScript.
 
@@ -78,8 +79,14 @@ Where to start:
 - Each header's `hashMerkleRoot` and `hashBlockCommitments`. These commit to the block's transactions and to Zcash's
   chain history (ZIP 221), so a zero-knowledge proof about Zcash state can be anchored to a header the relay checked.
 
-**Next:** proofs that a shielded Ironwood payment went to a committed receiver, checked against this relay, with no
-Zcash transaction id, note or address on Base. They work in Zecured today and move here next.
+**Shielded payments:** a contract can also require that a shielded Ironwood payment went to a receiver it committed
+to, for a reference it chose, with no Zcash transaction id, note or address on Base. A RISC Zero proof shows the
+payment is in the chain history of a header the relay holds, and `ZcashPaymentVerifier` checks that proof:
+- [docs/PAYMENTS.md](docs/PAYMENTS.md) covers what a proof shows, what reaches Base, what you trust, and how to pay and
+  prove;
+- [`ShieldedPaymentEscrow`](contracts/src/examples/ShieldedPaymentEscrow.sol) is an example: an ERC-20 locked until
+  its order's payment is proven;
+- the `seam` CLI makes the memo, the witness and the proof.
 
 **One rule:** nothing that links the two chains. Checking a Zcash transaction by its id against `hashMerkleRoot` would
 put that id on a public chain; Seam's payment proofs exist to avoid that.
@@ -141,11 +148,17 @@ across the activation follow it.
 | `contracts/src/relay/` | **The relay:**<br>• `ZcashHeaderRelay.sol`: the best chain by cumulative work from a checkpoint, with difficulty, time rules, linkage and reorganisations, and NU7's 25-second rules from a height set at deployment<br>• `ZcashEquihash.sol`: Equihash (200, 9) on the EIP-152 BLAKE2b precompile<br>• `ZcashPow.sol`: nBits, work, the difficulty adjustment, the block hash<br>• `IZcashHeaderRelay.sol`: interface, events and errors<br>Details are in its [README](contracts/src/relay/README.md). |
 | `contracts/src/interfaces/IZcashHeaderRelayReader.sol` | The read side, for any 0.8 compiler. |
 | `contracts/src/examples/ZcashFinalityGate.sol` | Example: act only on a block with enough work on top of it. |
+| `contracts/src/payment/` | **Payment proofs:**<br>• `ZcashPaymentVerifier.sol`: checks a proof's seal through the RISC Zero router, for a pinned guest and selector, and its anchor against a Seam relay<br>• `IZcashPaymentVerifier.sol`: its interface and the payment it returns |
+| `contracts/src/examples/ShieldedPaymentEscrow.sol` | Example, not audited: an ERC-20 locked until a shielded ZEC payment for the order is proven. |
+| `crates/seam-payment` | The statement a payment proof proves, shared by the guest and the hosts, and its K4 catalog: 50 single changes to a payment witness (51 for Mainnet), each with the outcome it must have. |
+| `crates/seam-chain` | What a witness needs besides the note's opening, rebuilt from public data: headers from Zcash peers, compact blocks from a light wallet server, the ZIP 221 history tree. Also a disposable wallet's payment. |
+| `crates/seam-cli` | `seam`: `memo`, `pay` (Testnet), `witness`; with the `zkvm` feature, `execute`, `prove`, `groth16`, `seal`, `image-id`, `export-elf` and `parity`. |
+| `zkvm/` | The payment guest (its own workspace), the crate that embeds it, and the vendored `pasta_curves` with its zkVM patch ([note](zkvm/vendor/pasta_curves/SEAM_PATCH.md)). |
 | `contracts/config/` | Each network's consensus parameters, with their sources. |
 | `contracts/script/DeployRelay.s.sol` | Deploys a relay from a parameter file and a checkpoint. |
 | `contracts/deployments/` | Deployment records: Seam's two relays, and the relay of Zecured's live run on 27 October 2026. |
 | `contracts/test/relay/` | **80 tests on real Testnet and Mainnet headers:**<br>• 30 headers across NU7's activation<br>• Equihash checked against the `equihash` crate Zebra uses, on 592 cases<br>• an independent Python implementation of the rules<br>• the P2P header tools |
-| `contracts/test/examples/`, `contracts/test/deployments/` | 16 tests of the reader, the example and Seam's two deployment records. |
+| `contracts/test/examples/`, `contracts/test/deployments/`, `contracts/test/payment/` | 38 tests of the reader, the examples, the payment verifier and Seam's two deployment records. |
 | `scripts/relay-feed.sh` | Feeds a relay from Zcash peers. |
 | `abi/` | ABI JSON for TypeScript and other clients. |
 | `research/relay-synthetic-headers/` | The solver behind the synthetic test headers (genuine Equihash solutions at Testnet's minimum difficulty). |
@@ -164,6 +177,21 @@ Three tests need an RPC URL and skip themselves without it:
 - the Base mainnet gas measurement (`BASE_MAINNET_RPC_URL`);
 - the live checks of the two Seam relays (`BASE_SEPOLIA_RPC_URL`).
 
+The Rust crates, with Rust 1.99.0 (`rust-toolchain.toml`), from the repository's root:
+
+```sh
+cargo test
+```
+
+This runs the payment statement's K4 catalog natively, on both networks' statements. Three tests that reach Zcash
+Testnet peers and a light wallet server are ignored; `crates/seam-chain/tests/network.rs` says how to run them. The
+guest builds on Linux or macOS only, with `cargo build -p seam-zkvm-methods`: reproducibly in RISC Zero's Docker
+builder with `SEAM_DOCKER_GUESTS=1`, otherwise with the local risc0 toolchain.
+
+**The statement's fixture is synthetic.** `crates/seam-payment/tests/fixtures/TEST-ONLY_testnet_ironwood_tx.json` holds
+public chain data only: a real Ironwood-only transaction mined on Zcash Testnet, with its inclusion data. The tests
+re-encrypt one of its notes as a payment to a test key and re-anchor it; `crates/seam-payment/src/k4.rs` explains how.
+
 **Mocks.** The payment tests use three, in `contracts/test/payment/Mocks.sol`, each labelled MOCK and refused outside a
 local chain (chain id 31337):
 - `MockRiscZeroVerifier`, a RISC Zero router that accepts the seal `selector || imageId || journalDigest` and verifies
@@ -173,10 +201,10 @@ local chain (chain id 31337):
 
 ## Roadmap
 
-1. **Zcash Mainnet across NU7:** the activation height, tests on real headers across it, and a Base Sepolia relay that
-   follows Mainnet.
-2. **A standalone relayer:** Zecured's Rust relayer and P2P client, with lag alarms.
-3. **Shielded payment proofs:**
+1. **Zcash Mainnet across NU7** (v0.2.0): the activation height, tests on real headers across it, and a Base Sepolia
+   relay that follows Mainnet.
+2. **A standalone relayer:** Zecured's Rust relayer, with lag alarms.
+3. **Shielded payment proofs** (v0.3.0):
    - the statement and its RISC Zero guest;
    - reproducible builds;
    - a `ZcashPaymentVerifier`;

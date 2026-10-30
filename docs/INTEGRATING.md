@@ -119,7 +119,7 @@ To prove something a block contains:
 
 Don't put a Zcash transaction id, note commitment or address on a public chain. A Merkle proof of a transaction against
 `merkleRoot` links that transaction to whoever submits it. Prove what your app needs in zero knowledge, and reveal only
-that. Seam's payment proofs, next on the roadmap, do this for shielded payments.
+that. Seam's payment proofs do this for shielded payments (§ 10).
 
 ## 9. Gas
 
@@ -135,3 +135,43 @@ own execution; the calling contract adds the call itself (2,600 gas for an addre
 | `headerOf` | 9,690 | 3,006 |
 | `bestChainTip` | 4,609 | — |
 | `bestBlockHashAt` | 6,809 | 4,659 (a height above the tip) |
+
+## 10. Shielded payments
+
+`ZcashPaymentVerifier` checks a Seam payment proof: a shielded Ironwood payment of `zatoshi` to the receiver behind
+`receiverCommitment`, whose memo names `paymentRef`, in the chain history of header `anchor` on a Seam relay's best
+chain ([PAYMENTS.md](PAYMENTS.md)). A contract that requires a payment checks what the proof binds against its own
+obligation:
+
+```solidity
+import {IZcashPaymentVerifier, ZcashPayment} from "seam/payment/IZcashPaymentVerifier.sol";
+
+(ZcashPayment memory p, uint256 anchorWork) = verifier.verify(journal, seal);
+require(p.paymentRef == keccak256(abi.encode(block.chainid, address(this), obligationId)));
+require(p.receiverCommitment == receiverCommitment);
+require(p.zatoshi >= price);
+require(anchorWork >= minWork);
+// Then settle this obligation, once.
+```
+
+- **Check the verifier once, as you check the relay (§ 1):**
+  - `relay()` is the relay you checked, and `networkId()` its network;
+  - `imageId()` is the guest pinned for that network in `zkvm/pinned-image-ids.txt`, which anyone can rebuild;
+  - `riscZeroVerifier()` is RISC Zero's verifier router on your chain, and `selector()` the Groth16 verifier it
+    dispatches to.
+- **One payment, one settlement.** `verify` is stateless: it accepts the same proof any number of times, and one
+  payment under many anchors. Bind each `paymentRef` to one obligation and settle it once.
+- **A reference only you use.** Derive `paymentRef` from your chain id, your contract and the obligation: a proof made
+  for another contract or chain then names another reference.
+- **The receiver commitment** is `keccak256(salt32 || receiver43)`. The salt must be fresh, random and secret for each
+  payment, shared off chain only with whoever proves.
+- **Finality.** Require `anchorWork >= minWork` (§ 4), with `minWork` sized against what all your open obligations are
+  worth together: a chain an attacker mines in private can carry any payment. Then a pending window before you act,
+  and a drop of any pending settlement whose anchor left the best chain.
+- **Deadlines, judged on the Zcash side.** Compare the anchor's header time (`headerOf(p.anchor).time`) with your
+  deadline, not the time of the proof on your chain, and give provers a grace period after it: a payer who paid in time
+  must not lose to a slow prover or a lagging relay (§ 6).
+- **The amount is public:** `zatoshi` is in the journal.
+
+[`ShieldedPaymentEscrow`](../contracts/src/examples/ShieldedPaymentEscrow.sol) puts these together. Its gas is in
+[PAYMENTS.md § 8](PAYMENTS.md#8-cost).

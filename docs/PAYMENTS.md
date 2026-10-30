@@ -116,3 +116,19 @@ set large:
 - **Don't pay near a known activation.**
 
 `seam witness --anchor <height>` anchors at a planned header.
+
+## 8. Cost
+
+Gas measured on 30 October 2026 with `forge test --match-test test_proveThenFinalizePaysThePayee --gas-report` (solc
+0.8.28, optimizer 200 runs), with the MOCK router and the MOCK token: each figure is the call's own execution, with
+storage cold.
+
+| Call | Gas |
+|---|---|
+| `ZcashPaymentVerifier.verify`, without the Groth16 check | 20,710: 19,882 its own (the journal, the selector, the relay's best chain and work), 828 the MOCK router |
+| `ShieldedPaymentEscrow.open` | 225,746, with the token's transfer |
+| `ShieldedPaymentEscrow.prove` | 120,369, with the `verify` above |
+| `ShieldedPaymentEscrow.finalize` | 97,216, with the token's transfer |
+
+The router's Groth16 check adds its own gas to `verify`. It, the guest's cycles and the proving time and cost are
+measured on a real Testnet payment, with its real seal, before v0.3.0 is released.
