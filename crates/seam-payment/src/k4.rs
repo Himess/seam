@@ -26,7 +26,10 @@ use serde::{Deserialize, Serialize};
 use zcash_history::{NodeDataV3, V2, V3, Version};
 use zcash_note_encryption::{Domain, OUT_CIPHERTEXT_SIZE};
 use zcash_primitives::transaction::Transaction;
-use zcash_protocol::consensus::BranchId;
+use zcash_protocol::{
+    consensus::BranchId,
+    constants::{V5_TX_VERSION, V5_VERSION_GROUP_ID},
+};
 
 use crate::{
     Error, MEMO_BINDING_LENGTH, MEMO_LENGTH, MmrStep, NU6_3_BRANCH_ID, Network, PaymentJournal, PaymentWitness,
@@ -333,6 +336,23 @@ fn drop_ironwood_bundle(w: &mut PaymentWitness) {
     w.tx.push(0);
 }
 
+/// The witness's transaction with its Ironwood bundle's `enableOutputs` flag cleared.
+fn disable_outputs(w: &mut PaymentWitness) {
+    // v6: 20 header bytes, four empty counts, then the Ironwood bundle: its action count, its actions, its flags.
+    assert_eq!(&w.tx[20..25], &[0, 0, 0, 0, 0]);
+    let actions = usize::from(w.tx[25]);
+    assert!(actions < 0xfd, "a one-byte action count");
+    w.tx[25 + 1 + actions * ACTION_LENGTH] &= !0b10;
+}
+
+/// The witness's transaction with a v5 transaction's header. It still parses: as a v5 transaction with no bundles,
+/// whose format ends where the Ironwood bundle starts.
+fn with_v5_header(w: &mut PaymentWitness) {
+    // The header word (overwintered | version), then the version group id, both little-endian.
+    w.tx[0..4].copy_from_slice(&(V5_TX_VERSION | 1 << 31).to_le_bytes());
+    w.tx[4..8].copy_from_slice(&V5_VERSION_GROUP_ID.to_le_bytes());
+}
+
 /// Re-encrypts the witness's note with `memo` and re-anchors it: the memo rule decides alone.
 fn with_memo(w: &mut PaymentWitness, memo: [u8; MEMO_LENGTH]) {
     reencrypt(w, &memo);
@@ -386,8 +406,10 @@ pub fn mutations(net: &Network) -> Vec<Mutation> {
     catalog.extend([
         // 2. The transaction: Ironwood only.
         m("truncated transaction", |w| w.tx.truncate(100), Refused(Transaction)),
+        m("a v5 transaction's header", with_v5_header, Refused(NotV6)),
         m("a transparent output", add_transparent_output, Refused(NotIronwoodOnly)),
         m("no Ironwood bundle", drop_ironwood_bundle, Refused(NotIronwoodOnly)),
+        m("the Ironwood bundle's outputs disabled", disable_outputs, Refused(OutputsDisabled)),
         m("action index out of range", |w| w.action_index = 99, Refused(NoSuchAction)),
         m("re-anchored, unchanged (the statement checks no proof of work)", reanchor, Accepted),
         m(

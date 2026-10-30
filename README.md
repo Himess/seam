@@ -150,7 +150,7 @@ across the activation follow it.
 | `contracts/src/examples/ZcashFinalityGate.sol` | Example: act only on a block with enough work on top of it. |
 | `contracts/src/payment/` | **Payment proofs:**<br>• `ZcashPaymentVerifier.sol`: checks a proof's seal through the RISC Zero router, for a pinned guest and selector, and its anchor against a Seam relay<br>• `IZcashPaymentVerifier.sol`: its interface and the payment it returns |
 | `contracts/src/examples/ShieldedPaymentEscrow.sol` | Example, not audited: an ERC-20 locked until a shielded ZEC payment for the order is proven. |
-| `crates/seam-payment` | The statement a payment proof proves, shared by the guest and the hosts, and its K4 catalog: 50 single changes to a payment witness (51 for Mainnet), each with the outcome it must have. |
+| `crates/seam-payment` | The statement a payment proof proves, shared by the guest and the hosts, and its K4 catalog: 52 single changes to a payment witness (53 for Mainnet), each with the outcome it must have. |
 | `crates/seam-chain` | What a witness needs besides the note's opening, rebuilt from public data: headers from Zcash peers, compact blocks from a light wallet server, the ZIP 221 history tree. Also a disposable wallet's payment. |
 | `crates/seam-cli` | `seam`: `memo`, `commitment`, `pay` (Testnet), `witness`; with the `zkvm` feature, `execute`, `prove`, `groth16`, `seal`, `image-id`, `export-elf` and `parity`. |
 | `zkvm/` | The payment guest (its own workspace), the crate that embeds it, and the vendored `pasta_curves` with its zkVM patch ([note](zkvm/vendor/pasta_curves/SEAM_PATCH.md)). |
