@@ -17,7 +17,9 @@ orchard = { version = "0.16", default-features = false, features = ["std"] }
 sapling = { package = "sapling-crypto", version = "0.9", default-features = false }
 incrementalmerkletree = { version = "0.9", features = ["legacy-api"] }
 zcash_note_encryption = "0.5"
-zcash_keys = { version = "=0.17.0-pre.1", default-features = false, features = ["std", "orchard"] }
+# `UnifiedFullViewingKey::from_orchard_fvk`, which encodes a disposable wallet's UFVK (`witness::fvk_ufvk`), is behind
+# `unstable-frost`, which gates that function alone.
+zcash_keys = { version = "=0.17.0-pre.1", default-features = false, features = ["std", "orchard", "unstable-frost"] }
 # The light wallet server's gRPC client and compact formats, as Zecured's zcash-ops used them.
 zcash_client_backend = { version = "=0.25.0-pre.1", default-features = false, features = [
     "orchard",
@@ -49,5 +51,3 @@ rand_core = { version = "0.6", features = ["getrandom"] }
 
 [dev-dependencies]
 seam-payment = { path = "../seam-payment", features = ["k4"] }
-# `UnifiedFullViewingKey::from_orchard_fvk`, which encodes a test key's UFVK, is behind `unstable-frost`.
-zcash_keys = { version = "=0.17.0-pre.1", default-features = false, features = ["std", "orchard", "unstable-frost"] }

@@ -117,6 +117,14 @@ pub fn find_payments(tx: &Transaction, fvk: &FullViewingKey) -> Result<Vec<Found
     Ok(out)
 }
 
+/// The UFVK of Zcash `network` holding the Orchard-protocol full viewing key `fvk` alone: what [`ufvk_fvk`] reads.
+pub fn fvk_ufvk(network: ZcashNetwork, fvk: &FullViewingKey) -> Result<String> {
+    UnifiedFullViewingKey::from_orchard_fvk(fvk.clone())
+        .map_err(|e| anyhow!("a unified full viewing key: {e:?}"))?
+        .encode(&network.params())
+        .map_err(|e| anyhow!("a unified full viewing key: {e:?}"))
+}
+
 /// The Orchard-protocol full viewing key of a UFVK of Zcash `network`: after NU6.3 it views the Ironwood pool.
 pub fn ufvk_fvk(network: ZcashNetwork, ufvk: &str) -> Result<FullViewingKey> {
     UnifiedFullViewingKey::decode(&network.params(), ufvk.trim())
@@ -222,10 +230,8 @@ mod tests {
         assert_eq!(built, w);
 
         // A UFVK of the test key (it holds no funds), decoded on its own network only.
-        let ufvk = UnifiedFullViewingKey::from_orchard_fvk(fvk(FIXTURE_RECEIVER_SPENDING_KEY))
-            .unwrap()
-            .encode(&ZcashNetwork::Testnet.params())
-            .unwrap();
+        let ufvk = fvk_ufvk(ZcashNetwork::Testnet, &fvk(FIXTURE_RECEIVER_SPENDING_KEY)).unwrap();
+        assert!(ufvk.starts_with("uviewtest1"));
         let decoded = ufvk_fvk(ZcashNetwork::Testnet, &format!("{ufvk}\n")).unwrap();
         assert_eq!(decoded.to_bytes(), fvk(FIXTURE_RECEIVER_SPENDING_KEY).to_bytes());
         assert!(ufvk_fvk(ZcashNetwork::Mainnet, &ufvk).is_err());

@@ -4,7 +4,7 @@
 //! recover the note from the chain afterwards. Testnet only: the wallet's key sits in a plain file.
 //!
 //! ```text
-//! seam pay --wallet <wallet.json> --new-wallet --address-out <address.txt>
+//! seam pay --wallet <wallet.json> --new-wallet --address-out <address.txt> [--ufvk-out <ufvk.txt>]
 //! seam pay --wallet <wallet.json> --to <ua> --zat <n> --ref <paymentRef> --opening <opening.json>
 //! ```
 
@@ -18,6 +18,7 @@ use seam_chain::{
     ZcashNetwork, lwd,
     pay::{authorize, build_payment, check_payment, proving_key, select_inputs, serialize},
     scan::ScanState,
+    witness::fvk_ufvk,
 };
 use serde::{Deserialize, Serialize};
 use zcash_keys::address::UnifiedAddress;
@@ -41,6 +42,10 @@ pub struct PayArgs {
     /// Where --new-wallet writes the wallet's unified address.
     #[arg(long, requires = "new_wallet")]
     address_out: Option<PathBuf>,
+    /// Where --new-wallet writes the wallet's unified full viewing key, for `seam witness --ufvk-file` when the wallet
+    /// receives a payment. Keep it private: it shows every payment to the wallet.
+    #[arg(long, requires = "new_wallet")]
+    ufvk_out: Option<PathBuf>,
     /// The receiver's unified address: its Orchard-protocol receiver is paid, in the Ironwood pool.
     #[arg(long, required_unless_present = "new_wallet")]
     to: Option<String>,
@@ -125,6 +130,10 @@ pub fn run(args: PayArgs) -> Result<()> {
             .encode(&network.params());
         write_private(&address_out, format!("{ua}\n").as_bytes())?;
         println!("wallet created, born at block {tip}; its unified address is in {}", address_out.display());
+        if let Some(ufvk_out) = args.ufvk_out {
+            write_private(&ufvk_out, format!("{}\n", fvk_ufvk(network, &FullViewingKey::from(&sk))?).as_bytes())?;
+            println!("its unified full viewing key is in {}: keep it private", ufvk_out.display());
+        }
         return Ok(());
     }
 

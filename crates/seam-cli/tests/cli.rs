@@ -141,6 +141,8 @@ fn pay_refuses_what_it_cannot_send() {
     assert!(!no_address_file.status.success() && stderr(&no_address_file).contains("--address-out"));
     let both = seam(&[&payment[..], &["--new-wallet", "--address-out", "a.txt"]].concat());
     assert!(!both.status.success() && stderr(&both).contains("cannot be used with"));
+    let viewing_key_of_a_payment = seam(&[&payment[..], &["--ufvk-out", "k.txt"]].concat());
+    assert!(!viewing_key_of_a_payment.status.success() && stderr(&viewing_key_of_a_payment).contains("--new-wallet"));
     if cfg!(not(feature = "mainnet")) {
         let mainnet = seam(&[&payment[..], &["--network", "mainnet"]].concat());
         assert!(!mainnet.status.success() && stderr(&mainnet).contains("needs a build"));
