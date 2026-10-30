@@ -26,9 +26,9 @@ contract ShieldedPaymentEscrowForkTest is Test {
     address internal constant ROUTER = 0x0b144E07A0826182B6b59788c34b32Bfa86Fb711;
     bytes4 internal constant GROTH16_SELECTOR = 0x73c457ba;
     uint32 internal constant NU7_BRANCH_ID = 0x7719_0AD9;
-    /// @dev The payment's fixture: the image id, journal and seal `seam seal` wrote, the Base Sepolia block to prove at
-    ///      (the relay holds the anchor with MIN_WORK on top) and a later one to finalize at (FINALIZE_DEPTH more
-    ///      headers).
+    /// @dev The payment's fixture: the receiver commitment the opener committed to (`seam commitment`), the image id,
+    ///      journal and seal `seam seal` wrote, the Base Sepolia block to prove at (the relay holds the anchor with
+    ///      MIN_WORK on top) and a later one to finalize at (FINALIZE_DEPTH more headers).
     string internal constant FIXTURE = "test/examples/fixtures/testnet_real_payment.json";
 
     /// @dev The order the real payment pays: its escrow, id and reference, as test_fork_theOrdersReference first printed
@@ -125,17 +125,18 @@ contract ShieldedPaymentEscrowForkTest is Test {
         bytes memory seal = vm.parseJsonBytes(json, ".seal");
         if (!_fork(vm.parseJsonUint(json, ".proveBlock"))) return;
         _deploy(vm.parseJsonBytes32(json, ".imageId"));
+        // The opener commits to the receiver before the payment (`seam commitment`); the proof must name the same.
+        (bytes32 orderId, bytes32 ref) = _open(vm.parseJsonBytes32(json, ".receiverCommitment"));
+        assertEq(ref, PAYMENT_REF);
 
         uint256 gasBefore = gasleft();
         (ZcashPayment memory p, uint256 anchorWork) = verifier.verify(journal, seal);
         console2.log("verify gas, with the Groth16 check", gasBefore - gasleft());
         assertEq(p.branchId, NU7_BRANCH_ID);
+        assertEq(p.paymentRef, ref, "the payment names the order");
         assertGe(p.zatoshi, ZAT);
         assertGe(anchorWork, MIN_WORK);
 
-        (bytes32 orderId, bytes32 ref) = _open(p.receiverCommitment);
-        assertEq(ref, PAYMENT_REF);
-        assertEq(p.paymentRef, ref, "the payment names the order");
         escrow.prove(orderId, journal, seal);
         ShieldedPaymentEscrow.Pending memory pending = escrow.pendingSettlement(orderId);
         assertEq(pending.anchor, p.anchor);
