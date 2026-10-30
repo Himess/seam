@@ -64,8 +64,9 @@ fn witness_refuses_what_it_cannot_build() {
     assert!(!missing.status.success() && stderr(&missing).contains("read salt"));
 }
 
-fn temp_dir() -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("seam-cli-test-{}", std::process::id()));
+/// A directory of the system's temporary directory for one test, which the test removes.
+fn temp_dir(test: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("seam-cli-test-{}-{test}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -74,7 +75,7 @@ fn temp_dir() -> std::path::PathBuf {
 /// the network before that is settled.
 #[test]
 fn witness_takes_the_txid_from_the_opening() {
-    let dir = temp_dir();
+    let dir = temp_dir("txid");
     let salt = dir.join("salt.txt");
     std::fs::write(&salt, "5a".repeat(32)).unwrap();
     let opening = |txid: Option<&str>| {
@@ -113,12 +114,13 @@ fn witness_takes_the_txid_from_the_opening() {
         let out = run(&extra);
         assert!(stderr(&out).contains("no epoch"), "{}", stderr(&out));
     }
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 /// `pay` is Testnet's only, names its payment completely, and creates a wallet only with an address file to write.
 #[test]
 fn pay_refuses_what_it_cannot_send() {
-    let dir = temp_dir();
+    let dir = temp_dir("pay");
     let wallet = dir.join("wallet.json").display().to_string();
     let payment = [
         "pay",
@@ -146,4 +148,5 @@ fn pay_refuses_what_it_cannot_send() {
     let bad_receiver = seam(&payment);
     assert!(!bad_receiver.status.success() && stderr(&bad_receiver).contains("--to"));
     assert!(!std::path::Path::new(&wallet).exists() && !std::path::Path::new("o.json").exists());
+    std::fs::remove_dir_all(dir).unwrap();
 }

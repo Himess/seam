@@ -22,8 +22,9 @@ const T_HASH: &str = "00000b7d47d097937e0ce99b75fb42d85fc810bf51c7382129dce3303c
 const PUBLIC_TX: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/../seam-payment/tests/fixtures/TEST-ONLY_testnet_ironwood_tx.json");
 
-fn temp_dir() -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("seam-chain-network-{}", std::process::id()));
+/// A directory of the system's temporary directory for one test, which the test removes.
+fn temp_dir(test: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("seam-chain-network-{}-{test}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -37,8 +38,8 @@ fn lwd_url() -> String {
 #[test]
 #[ignore = "needs Zcash Testnet peers"]
 fn headers_from_testnet_peers() {
-    let path = temp_dir().join("headers.jsonl");
-    let _ = std::fs::remove_file(&path);
+    let dir = temp_dir("headers");
+    let path = dir.join("headers.jsonl");
     let mut peers = p2p::seed_peers(ZcashNetwork::Testnet);
     println!("{} seeded addresses", peers.len());
     let t_hash = parse_display_hash(T_HASH).unwrap();
@@ -51,7 +52,7 @@ fn headers_from_testnet_peers() {
     assert_eq!(loaded.headers.get(T + 1).unwrap().prev_hash, t_hash);
     assert_eq!(sha256d(&loaded.raw[&(T + 1)]), loaded.headers.get(T + 1).unwrap().hash);
     println!("400 headers after {T}, linked; locator depth {LOCATOR_DEPTH}");
-    std::fs::remove_file(&path).unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 /// The light wallet server follows Testnet, and refuses to be taken for a Mainnet server.
@@ -76,7 +77,8 @@ async fn the_fixture_is_located_again_from_the_network() {
     let txid = Transaction::read(&p.tx[..], BranchId::Nu7).unwrap().txid();
     let network = ZcashNetwork::Testnet;
     let epoch = network.epoch(T).unwrap();
-    let dir = std::env::var_os("SEAM_TEST_DATA_DIR").map_or_else(temp_dir, PathBuf::from);
+    let kept = std::env::var_os("SEAM_TEST_DATA_DIR").map(PathBuf::from);
+    let dir = kept.clone().unwrap_or_else(|| temp_dir("fixture"));
     let files = DataFiles::in_dir(&dir, network, epoch);
     let mut client = lwd::connect(&lwd_url()).await.unwrap();
     lwd::check_network(&mut client, network).await.unwrap();
@@ -124,4 +126,7 @@ async fn the_fixture_is_located_again_from_the_network() {
     .unwrap();
     assert_eq!((again.peaks, rebuilt), (at.peaks, 0));
     println!("located again from the files in {:.1?}", started.elapsed());
+    if kept.is_none() {
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }

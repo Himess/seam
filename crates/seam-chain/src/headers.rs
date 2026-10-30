@@ -373,10 +373,9 @@ pub(crate) mod tests {
         std::fs::write(path, text).unwrap();
     }
 
+    /// A file of the system's temporary directory for one test, which the test removes.
     pub(crate) fn temp_path(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("seam-chain-test-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir.join(name)
+        std::env::temp_dir().join(format!("seam-chain-test-{}-{name}", std::process::id()))
     }
 
     #[test]
