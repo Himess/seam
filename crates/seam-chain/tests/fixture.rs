@@ -9,7 +9,7 @@ use seam_chain::{
     history::{BlockSummary, Header, block_commitments, display_hash, leaf, txid_merkle_path, txid_merkle_root},
     mmr::{Mmr, PathStep, bag_peaks, fold_path, peak_ranges},
 };
-use seam_payment::{NU7_BRANCH_ID, k4::PublicTx};
+use seam_payment::{Inclusion, MmrStep, NU7_BRANCH_ID, check_inclusion, k4::PublicTx, sha256d};
 use zcash_history::{NodeDataV3, V3, Version};
 use zcash_primitives::transaction::Transaction;
 use zcash_protocol::consensus::BranchId;
@@ -32,16 +32,13 @@ fn source(key: &str) -> serde_json::Value {
     json["source"][key].clone()
 }
 
-/// B's leaf is the one `history::leaf` builds from B's header (hash, time, nBits and the work they give) and B's
-/// height, with the tree roots and transaction counts it records.
-#[test]
-fn the_leaf_of_block_b() {
-    let p = public_tx();
+/// B's summary: its header's hash, time and nBits, its height, and the tree roots and transaction counts its leaf
+/// records.
+fn summary_of_b(p: &PublicTx) -> BlockSummary {
     let header = Header::parse(&p.block_header).unwrap();
-    assert_eq!(display_hash(&header.hash), source("block_hash_display"));
     let recorded = node(&p.leaf);
     let v2 = &recorded.v2;
-    let summary = BlockSummary {
+    BlockSummary {
         height: B,
         hash: header.hash,
         time: header.time,
@@ -52,9 +49,55 @@ fn the_leaf_of_block_b() {
         sapling_tx: v2.v1.sapling_tx,
         orchard_tx: v2.orchard_tx,
         ironwood_tx: recorded.ironwood_tx,
-    };
+    }
+}
+
+/// B's leaf is the one `history::leaf` builds from B's header (hash, time, nBits and the work they give) and B's
+/// height, with the tree roots and transaction counts it records.
+#[test]
+fn the_leaf_of_block_b() {
+    let p = public_tx();
+    assert_eq!(display_hash(&Header::parse(&p.block_header).unwrap().hash), source("block_hash_display"));
+    let summary = summary_of_b(&p);
     assert_eq!(V3::to_bytes(&leaf(NU7_BRANCH_ID, &summary)), p.leaf);
     assert!(summary.ironwood_tx >= 1, "B holds the Ironwood transaction");
+}
+
+/// The inclusion rebuilt here, B's leaf from its header and the txid path from B's txids, with the real path and
+/// peaks folded by this crate, is one `seam_payment::check_inclusion` accepts, for B under T.
+#[test]
+fn the_rebuilt_inclusion_is_the_statements() {
+    let p = public_tx();
+    let txid: [u8; 32] = *Transaction::read(&p.tx[..], BranchId::Nu7).unwrap().txid().as_ref();
+    let txid_path = txid_merkle_path(&[p.txid_path[0], txid], 1).unwrap();
+    let leaf_node = leaf(NU7_BRANCH_ID, &summary_of_b(&p));
+    let path: Vec<PathStep> = p.mmr_path.iter().map(|s| (node(&s.sibling), s.sibling_is_left)).collect();
+    let mut peaks: Vec<Vec<u8>> = p.peaks.clone();
+    peaks[p.peak_index as usize] = V3::to_bytes(&fold_path(&leaf_node, &path));
+    let mmr_path: Vec<MmrStep> = path
+        .iter()
+        .map(|(n, left)| MmrStep {
+            sibling: V3::to_bytes(n),
+            sibling_is_left: *left,
+        })
+        .collect();
+    let included = check_inclusion(
+        &txid,
+        &Inclusion {
+            branch_id: NU7_BRANCH_ID,
+            tx_index: 1,
+            txid_path: &txid_path,
+            block_header: &p.block_header,
+            leaf: &V3::to_bytes(&leaf_node),
+            mmr_path: &mmr_path,
+            peaks: &peaks,
+            peak_index: p.peak_index,
+            tip_header: &p.tip_header,
+            tip_auth_data_root: &p.tip_auth_data_root,
+        },
+    )
+    .unwrap();
+    assert_eq!((included.block_height, included.tip_hash), (u64::from(B), sha256d(&p.tip_header)));
 }
 
 /// B holds two transactions; the payment is the second. The txid tree over them gives the fixture's path and B's
