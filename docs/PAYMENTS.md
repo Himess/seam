@@ -45,7 +45,8 @@ abi.encode(uint8 version = 1, uint32 branchId, bytes32 anchor, bytes32 paymentRe
 
 The value is public: an app whose amounts must stay private needs another design. The salt must be fresh, random and
 secret for each payment: a reused salt and receiver link payments on chain, and a guessable salt lets anyone test
-candidate receivers against the commitment.
+candidate receivers against the commitment. `seam commitment --address <ua> --salt-file <file> --new-salt` makes such a
+salt, in a file only its owner may read, and prints the commitment an app commits to.
 
 ## 3. What you have to trust
 

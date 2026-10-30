@@ -152,7 +152,7 @@ across the activation follow it.
 | `contracts/src/examples/ShieldedPaymentEscrow.sol` | Example, not audited: an ERC-20 locked until a shielded ZEC payment for the order is proven. |
 | `crates/seam-payment` | The statement a payment proof proves, shared by the guest and the hosts, and its K4 catalog: 50 single changes to a payment witness (51 for Mainnet), each with the outcome it must have. |
 | `crates/seam-chain` | What a witness needs besides the note's opening, rebuilt from public data: headers from Zcash peers, compact blocks from a light wallet server, the ZIP 221 history tree. Also a disposable wallet's payment. |
-| `crates/seam-cli` | `seam`: `memo`, `pay` (Testnet), `witness`; with the `zkvm` feature, `execute`, `prove`, `groth16`, `seal`, `image-id`, `export-elf` and `parity`. |
+| `crates/seam-cli` | `seam`: `memo`, `commitment`, `pay` (Testnet), `witness`; with the `zkvm` feature, `execute`, `prove`, `groth16`, `seal`, `image-id`, `export-elf` and `parity`. |
 | `zkvm/` | The payment guest (its own workspace), the crate that embeds it, and the vendored `pasta_curves` with its zkVM patch ([note](zkvm/vendor/pasta_curves/SEAM_PATCH.md)). |
 | `contracts/config/` | Each network's consensus parameters, with their sources. |
 | `contracts/script/DeployRelay.s.sol` | Deploys a relay from a parameter file and a checkpoint. |

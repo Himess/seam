@@ -152,3 +152,66 @@ fn pay_refuses_what_it_cannot_send() {
     assert!(!std::path::Path::new(&wallet).exists() && !std::path::Path::new("o.json").exists());
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// The unified address, with an Orchard-protocol receiver only, of the fixture's test key (it holds no funds), on the
+/// build's network.
+fn test_address() -> String {
+    use orchard::keys::{FullViewingKey, Scope, SpendingKey};
+    let fvk = FullViewingKey::from(&SpendingKey::from_bytes(seam_payment::k4::FIXTURE_RECEIVER_SPENDING_KEY).unwrap());
+    zcash_keys::address::UnifiedAddress::from_receivers(
+        Some(fvk.address_at(0u32, Scope::External)),
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap()
+    .encode(&seam_chain::ZcashNetwork::of_build().params())
+}
+
+/// `commitment` checks the address before it writes a salt file, never replaces one, and gives the same commitment
+/// for the same salt.
+#[test]
+fn commitment_never_replaces_a_salt() {
+    let dir = temp_dir("commitment");
+    let salt = dir.join("salt.txt");
+    let salt_arg = salt.display().to_string();
+    let bad = seam(&[
+        "commitment",
+        "--address",
+        "utest1notanaddress",
+        "--salt-file",
+        &salt_arg,
+        "--new-salt",
+    ]);
+    assert!(!bad.status.success() && stderr(&bad).contains("--address"));
+    assert!(!salt.exists());
+
+    let address = test_address();
+    let made = seam(&[
+        "commitment",
+        "--address",
+        &address,
+        "--salt-file",
+        &salt_arg,
+        "--new-salt",
+    ]);
+    assert!(made.status.success(), "{}", stderr(&made));
+    let written = std::fs::read_to_string(&salt).unwrap();
+    assert_eq!(written.trim().len(), 64);
+    let printed = String::from_utf8(made.stdout).unwrap();
+    assert!(printed.starts_with("0x") && printed.trim().len() == 66);
+    let again = seam(&["commitment", "--address", &address, "--salt-file", &salt_arg]);
+    assert_eq!(String::from_utf8(again.stdout).unwrap(), printed, "the same salt, the same commitment");
+    let replace = seam(&[
+        "commitment",
+        "--address",
+        &address,
+        "--salt-file",
+        &salt_arg,
+        "--new-salt",
+    ]);
+    assert!(!replace.status.success() && stderr(&replace).contains("never replaced"));
+    assert_eq!(std::fs::read_to_string(&salt).unwrap(), written);
+    std::fs::remove_dir_all(dir).unwrap();
+}

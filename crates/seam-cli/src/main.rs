@@ -3,6 +3,8 @@
 //!
 //! ```text
 //! seam memo <paymentRef> [--address <ua> --amount <ZEC>]     the memo text, and a ZIP 321 payment URI
+//! seam commitment --address <ua> --salt-file <file> [--new-salt]
+//!                                                              the receiver commitment an app commits to
 //! seam witness --txid <id> (--opening <file> | --ufvk-file <file>) --salt-file <file> --anchor <height>
 //!              --out <witness.json>                            a witness, checked with the statement
 //! seam pay --wallet <file> --to <ua> --zat <n> --ref <paymentRef> --opening <out.json>
@@ -22,6 +24,7 @@ use anyhow::{Context, Result, ensure};
 use clap::{Parser, Subcommand};
 use seam_chain::ZcashNetwork;
 
+mod commitment;
 mod memo;
 mod pay;
 mod witness;
@@ -43,6 +46,9 @@ struct Cli {
 enum Command {
     /// Prints the memo text that binds a payment to a paymentRef and, with --address and --amount, a ZIP 321 URI.
     Memo(memo::MemoArgs),
+    /// Prints the receiver commitment keccak256(salt32 || receiver43) an app commits to, from the receiver's unified
+    /// address and a salt file, which --new-salt creates.
+    Commitment(commitment::CommitmentArgs),
     /// Builds the witness of a payment from chain data and its opening (the payer's, or found with the receiver's
     /// viewing key), and checks it with the statement.
     Witness(witness::WitnessArgs),
@@ -100,6 +106,7 @@ pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
 fn run(cli: Cli) -> Result<()> {
     match cli.command {
         Command::Memo(args) => memo::run(args),
+        Command::Commitment(args) => commitment::run(args),
         Command::Witness(args) => tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()

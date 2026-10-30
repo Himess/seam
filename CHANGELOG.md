@@ -9,8 +9,8 @@ Shielded payment proofs (docs/PAYMENTS.md), adapted from Zecured's payment path 
 - `zkvm/`: the RISC Zero guest (risc0 3.0.6), one per network, built in RISC Zero's Docker builder for reproducible
   image ids, and the vendored `pasta_curves` with Zecured's zkVM patch.
 - `crates/seam-chain` and `crates/seam-cli`: the chain data a witness needs, from Zcash peers and a light wallet server;
-  `seam memo`, `seam pay` (Testnet, a disposable wallet), `seam witness` (from the payer's opening or the receiver's
-  viewing key) and, with the `zkvm` feature, the executor, the prover and the Groth16 wrap.
+  `seam memo`, `seam commitment`, `seam pay` (Testnet, a disposable wallet), `seam witness` (from the payer's opening or
+  the receiver's viewing key) and, with the `zkvm` feature, the executor, the prover and the Groth16 wrap.
 - `ZcashPaymentVerifier`: checks a proof's seal through the RISC Zero router, for a pinned guest and selector, and its
   anchor on a Seam relay's best chain. No owner, no upgrade.
 - `ShieldedPaymentEscrow` (example, not audited): an ERC-20 locked until a shielded ZEC payment for the order is
