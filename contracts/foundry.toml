@@ -16,6 +16,7 @@ fs_permissions = [
     { access = "read-write", path = "./deployments" },
     { access = "read", path = "./config" },
     { access = "read", path = "./test/relay/fixtures" },
+    { access = "read", path = "./test/examples/fixtures" },
 ]
 # Static test linking. Forge >= 1.x links test code dynamically by default and rewrites `new` of a src/ contract into
 # `deployCode`: then `vm.expectRevert` followed by a reverting `new` ends the test as a pass and silently skips every

@@ -158,7 +158,7 @@ across the activation follow it.
 | `contracts/script/DeployRelay.s.sol` | Deploys a relay from a parameter file and a checkpoint. |
 | `contracts/deployments/` | Deployment records: Seam's two relays, and the relay of Zecured's live run on 27 October 2026. |
 | `contracts/test/relay/` | **80 tests on real Testnet and Mainnet headers:**<br>• 30 headers across NU7's activation<br>• Equihash checked against the `equihash` crate Zebra uses, on 592 cases<br>• an independent Python implementation of the rules<br>• the P2P header tools |
-| `contracts/test/examples/`, `contracts/test/deployments/`, `contracts/test/payment/` | 38 tests of the reader, the examples, the payment verifier and Seam's two deployment records. |
+| `contracts/test/examples/`, `contracts/test/deployments/`, `contracts/test/payment/` | 40 tests of the reader, the examples, the payment verifier and Seam's two deployment records, two of them on a Base Sepolia fork with a real payment. |
 | `scripts/relay-feed.sh` | Feeds a relay from Zcash peers. |
 | `abi/` | ABI JSON for TypeScript and other clients. |
 | `research/relay-synthetic-headers/` | The solver behind the synthetic test headers (genuine Equihash solutions at Testnet's minimum difficulty). |
@@ -173,9 +173,10 @@ cd seam/contracts
 forge test
 ```
 
-Three tests need an RPC URL and skip themselves without it:
+Five tests need an RPC URL and skip themselves without it:
 - the Base mainnet gas measurement (`BASE_MAINNET_RPC_URL`);
-- the live checks of the two Seam relays (`BASE_SEPOLIA_RPC_URL`).
+- the live checks of the two Seam relays (`BASE_SEPOLIA_RPC_URL`);
+- the real payment's order and its settlement on a Base Sepolia fork (`BASE_SEPOLIA_RPC_URL`).
 
 The Rust crates, with Rust 1.99.0 (`rust-toolchain.toml`), from the repository's root:
 
