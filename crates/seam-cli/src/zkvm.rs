@@ -9,7 +9,7 @@
 //! seam seal <witness.json> <seal.json>      prove, then groth16, in one run
 //! seam image-id                             the guest's image id
 //! seam export-elf <guest.bin>               the guest, to pin it
-//! seam parity <witness.json>                K4: each change, the same outcome natively and in the executor
+//! seam parity <public-tx.json>              K4: each change, the same outcome natively and in the executor
 //! seam p254 | shrink-wrap                   with the `cuda` feature: the Groth16 wrap in two processes
 //! ```
 //!
@@ -62,12 +62,10 @@ pub enum ZkvmCommand {
     ExportElf { out: PathBuf },
     /// K4: every change of seam-payment's catalog has its outcome natively and the same outcome in the executor.
     Parity {
-        /// The base witness (JSON), or - for standard input; it must prove.
-        witness: String,
-        /// The input is a public transaction (crates/seam-payment/tests/fixtures/TEST-ONLY_testnet_ironwood_tx.json):
-        /// the base is the synthetic witness seam-payment builds from it.
-        #[arg(long)]
-        synthesize: bool,
+        /// A public transaction (crates/seam-payment/tests/fixtures/TEST-ONLY_testnet_ironwood_tx.json), or - for
+        /// standard input: the base is the synthetic witness seam-payment builds from it, the one the catalog's
+        /// outcomes are written for.
+        public_tx: String,
     },
     /// The first half of groth16, in its own process: the receipt's Poseidon254 identity receipt.
     #[cfg(feature = "cuda")]
@@ -192,15 +190,13 @@ fn groth16_seal(guest: &Guest, receipt: &Receipt) -> Result<Vec<u8>> {
     Ok([&g.verifier_parameters.as_bytes()[..4], &g.seal[..]].concat())
 }
 
-/// K4: every change of seam-payment's catalog (for this build's network) of the base witness has its outcome natively
-/// and the same outcome in the executor: the guest panics with the statement's own error, or commits the same journal.
-fn parity(guest: &Guest, input: &str, synthesize: bool) -> Result<()> {
-    let bytes = read_witness(input)?;
-    let base: PaymentWitness = if synthesize {
-        k4::synthesize(&serde_json::from_slice::<k4::PublicTx>(&bytes).context("a public transaction (JSON)")?)
-    } else {
-        serde_json::from_slice(&bytes).context("a payment witness (JSON)")?
-    };
+/// K4: every change of seam-payment's catalog (for this build's network) of the synthetic witness built from the
+/// public transaction at `input` has its outcome natively and the same outcome in the executor: the guest panics with
+/// the statement's own error, or commits the same journal.
+fn parity(guest: &Guest, input: &str) -> Result<()> {
+    let public_tx =
+        serde_json::from_slice::<k4::PublicTx>(&read_witness(input)?).context("a public transaction (JSON)")?;
+    let base = k4::synthesize(&public_tx);
     let real = verify(&base).map_err(|e| anyhow!("the base witness does not prove: {e:?}"))?;
     let started = Instant::now();
     let session = default_executor().execute(env_for_frame(&bincode::serialize(&base)?, None)?, &guest.elf)?;
@@ -229,7 +225,7 @@ fn parity(guest: &Guest, input: &str, synthesize: bool) -> Result<()> {
         println!(
             "{:<66} {:<34} native {} zkVM {} ({elapsed:.1?})",
             m.name,
-            format!("{:?}", m.expected),
+            m.expected.to_string(),
             ok(as_expected),
             ok(same_zkvm)
         );
@@ -298,9 +294,9 @@ pub fn run(command: ZkvmCommand) -> Result<()> {
             write_seal(&guest, &seal, &journal, &bytes)?;
             println!("seal written to {}", seal.display());
         }
-        ZkvmCommand::Parity { witness, synthesize } => {
+        ZkvmCommand::Parity { public_tx } => {
             println!("image id 0x{} ({} network)", hex::encode(guest.image_id()), NETWORK.name);
-            parity(&guest, &witness, synthesize)?;
+            parity(&guest, &public_tx)?;
         }
         // `groth16` in two processes, as risc0-zkvm's succinct_to_groth16 chains them: the Poseidon254 identity
         // receipt, then its Groth16 wrap. Run apart, each half can be checked on its own.

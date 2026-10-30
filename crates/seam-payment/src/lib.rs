@@ -219,7 +219,8 @@ pub enum Error {
     NotDecryptable,
     /// The recovered note is not the opened one.
     NoteCommitmentMismatch,
-    /// The note plaintext is not a V3 (ZIP 2005) Ironwood note.
+    /// The note plaintext is not a V3 (ZIP 2005) Ironwood note. Unreachable with orchard 0.16, whose Ironwood domain
+    /// parses V3 plaintexts only: one of another version fails to decrypt ([`Error::NotDecryptable`]).
     NoteVersion,
     /// The note's memo does not open with `seam1:` and 64 lowercase hex digits.
     Memo,
@@ -291,6 +292,7 @@ pub fn verify_on(net: &Network, w: &PaymentWitness) -> Result<PaymentJournal, Er
     {
         return Err(Error::NoteCommitmentMismatch);
     }
+    // The Ironwood domain already refuses any other version (orchard 0.16); kept in case a later orchard parses more.
     if recovered.version() != NoteVersion::V3 {
         return Err(Error::NoteVersion);
     }

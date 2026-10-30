@@ -13,22 +13,24 @@
 //! chain). Only the payment note is new: the transaction's shape, its epoch, B's height and position, the history
 //! tree's shape and every other byte are the real ones.
 
+use std::fmt;
+
 use orchard::{
     Address, Note,
     keys::{FullViewingKey, Scope, SpendingKey},
     note::{ExtractedNoteCommitment, NoteVersion, RandomSeed, Rho},
-    note_encryption::{IronwoodDomain, IronwoodNoteEncryption},
+    note_encryption::{ENC_CIPHERTEXT_SIZE, IronwoodDomain, IronwoodNoteEncryption},
     value::NoteValue,
 };
 use serde::{Deserialize, Serialize};
 use zcash_history::{NodeDataV3, V2, V3, Version};
-use zcash_note_encryption::Domain;
+use zcash_note_encryption::{Domain, OUT_CIPHERTEXT_SIZE};
 use zcash_primitives::transaction::Transaction;
 use zcash_protocol::consensus::BranchId;
 
 use crate::{
     Error, MEMO_BINDING_LENGTH, MEMO_LENGTH, MmrStep, NU6_3_BRANCH_ID, Network, PaymentJournal, PaymentWitness,
-    block_commitments, keccak256, payment_memo, sha256d, txid_path_root,
+    block_commitments, keccak256, payment_memo, receiver_commitment, sha256d, txid_path_root,
 };
 
 /// The fixture's reference: `paymentRef = keccak256(abi.encode(uint256 chainId, address escrow, uint256 orderId))`,
@@ -78,10 +80,15 @@ pub fn fixture_payment_ref() -> [u8; 32] {
     payment_ref(FIXTURE_CHAIN_ID, &FIXTURE_ESCROW, FIXTURE_ORDER_ID)
 }
 
+/// The external address at diversifier index `index` of the test spending key `sk`, as a 43-byte raw receiver.
+pub fn test_receiver_at(sk: [u8; 32], index: u32) -> [u8; 43] {
+    let sk = SpendingKey::from_bytes(sk).expect("a valid spending key");
+    FullViewingKey::from(&sk).address_at(index, Scope::External).to_raw_address_bytes()
+}
+
 /// The external address at diversifier index 0 of the test spending key `sk`, as a 43-byte raw receiver.
 pub fn test_receiver(sk: [u8; 32]) -> [u8; 43] {
-    let sk = SpendingKey::from_bytes(sk).expect("a valid spending key");
-    FullViewingKey::from(&sk).address_at(0u32, Scope::External).to_raw_address_bytes()
+    test_receiver_at(sk, 0)
 }
 
 /// The fixture's receiver.
@@ -89,31 +96,67 @@ pub fn fixture_receiver() -> [u8; 43] {
     test_receiver(FIXTURE_RECEIVER_SPENDING_KEY)
 }
 
+/// What a journal binds a payment to: its reference, receiver commitment and amount.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Binding {
+    pub payment_ref: [u8; 32],
+    pub receiver_commitment: [u8; 32],
+    pub zatoshi: u64,
+}
+
+impl Binding {
+    /// What journal `j` binds.
+    pub fn of(j: &PaymentJournal) -> Self {
+        Binding {
+            payment_ref: j.payment_ref,
+            receiver_commitment: j.receiver_commitment,
+            zatoshi: j.zatoshi,
+        }
+    }
+
+    /// What the synthetic fixture binds: [`fixture_payment_ref`], [`fixture_receiver`] under [`FIXTURE_SALT`] and
+    /// [`FIXTURE_VALUE`].
+    pub fn fixture() -> Self {
+        Binding {
+            payment_ref: fixture_payment_ref(),
+            receiver_commitment: receiver_commitment(&FIXTURE_SALT, &fixture_receiver()),
+            zatoshi: FIXTURE_VALUE,
+        }
+    }
+}
+
 /// What a change must lead to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Expected {
     /// The statement refuses the witness with this error (the guest panics with it).
     Refused(Error),
-    /// The statement accepts the witness with the base journal's reference, receiver commitment and amount: the change
-    /// is one the statement does not see, or a re-anchoring.
+    /// The statement accepts the witness with the base journal's binding: the change is one the statement does not
+    /// see, or a re-anchoring.
     Accepted,
-    /// The statement accepts the witness, but its journal names another reference, receiver commitment or amount than
-    /// the base's: an app refuses it for the base's payment.
-    Rebound,
+    /// The statement accepts the witness with exactly this binding, not the base's: an app refuses it for the base's
+    /// payment.
+    Rebound(Binding),
+}
+
+/// The outcome alone, without a rebinding's values: `Refused(Memo)`, `Accepted`, `Rebound`.
+impl fmt::Display for Expected {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Expected::Refused(e) => write!(f, "Refused({e:?})"),
+            Expected::Accepted => f.write_str("Accepted"),
+            Expected::Rebound(_) => f.write_str("Rebound"),
+        }
+    }
 }
 
 /// Whether `native`, the statement's outcome on a changed witness, is what `expected` asks, given the base witness's
 /// journal `base`.
 pub fn as_expected(expected: Expected, base: &PaymentJournal, native: &Result<PaymentJournal, Error>) -> bool {
-    let binds_like_base = |j: &PaymentJournal| {
-        j.payment_ref == base.payment_ref
-            && j.receiver_commitment == base.receiver_commitment
-            && j.zatoshi == base.zatoshi
-    };
+    let same_epoch = |j: &PaymentJournal| j.version == base.version && j.branch_id == base.branch_id;
     match (expected, native) {
         (Expected::Refused(e), Err(got)) => *got == e,
-        (Expected::Accepted, Ok(j)) => binds_like_base(j) && j.version == base.version && j.branch_id == base.branch_id,
-        (Expected::Rebound, Ok(j)) => !binds_like_base(j) && j.version == base.version && j.branch_id == base.branch_id,
+        (Expected::Accepted, Ok(j)) => same_epoch(j) && Binding::of(j) == Binding::of(base),
+        (Expected::Rebound(b), Ok(j)) => same_epoch(j) && Binding::of(j) == b && b != Binding::of(base),
         _ => false,
     }
 }
@@ -162,6 +205,11 @@ pub fn synthesize(p: &PublicTx) -> PaymentWitness {
 /// ephemeral key and note ciphertext change; its value commitment, key, proof and signatures do not (the statement
 /// checks none of them). The txid changes: [`reanchor`] puts the transaction back under an anchor.
 pub fn reencrypt(w: &mut PaymentWitness, memo: &[u8; MEMO_LENGTH]) {
+    reencrypt_as(w, memo, NoteVersion::V3);
+}
+
+/// [`reencrypt`], with a note of `version`: the Ironwood pool's notes are V3 (ZIP 2005).
+fn reencrypt_as(w: &mut PaymentWitness, memo: &[u8; MEMO_LENGTH], version: NoteVersion) {
     let tx = Transaction::read(&w.tx[..], BranchId::Nu7).expect("a v6 transaction");
     let bundle = tx.ironwood_bundle().expect("an Ironwood bundle");
     let action = &bundle.actions()[w.action_index as usize];
@@ -179,8 +227,7 @@ pub fn reencrypt(w: &mut PaymentWitness, memo: &[u8; MEMO_LENGTH]) {
     let recipient: [u8; 43] = w.note_recipient.clone().try_into().expect("a 43-byte receiver");
     let address = Address::from_raw_address_bytes(&recipient).expect("a valid receiver");
     let rseed = RandomSeed::from_bytes(w.note_rseed, &rho).expect("an rseed valid for the action's rho");
-    let note = Note::from_parts(address, NoteValue::from_raw(w.note_value), rho, rseed, NoteVersion::V3)
-        .expect("a valid note");
+    let note = Note::from_parts(address, NoteValue::from_raw(w.note_value), rho, rseed, version).expect("a valid note");
     let cmx = ExtractedNoteCommitment::from(note.commitment()).to_bytes();
     let encryption = IronwoodNoteEncryption::new(None, note, *memo);
     let epk = IronwoodDomain::epk_bytes(encryption.epk()).0;
@@ -250,6 +297,26 @@ pub fn add_transparent_output(w: &mut PaymentWitness) {
     w.tx = tx;
 }
 
+/// Length of a serialized Ironwood action without its signature: cv_net, nf, rk, cmx, epk and both ciphertexts.
+const ACTION_LENGTH: usize = 5 * 32 + ENC_CIPHERTEXT_SIZE + OUT_CIPHERTEXT_SIZE;
+
+/// The witness's transaction with a copy of its Ironwood bundle in the Orchard pool's place (the Ironwood-only rule
+/// forbids any Orchard-pool bundle). The copy's flags clear `enableCrossAddress`, which an Orchard-pool bundle may not
+/// set: the transaction still parses.
+pub fn add_orchard_pool_bundle(w: &mut PaymentWitness) {
+    // v6: 20 header bytes; no transparent inputs or outputs, no Sapling spends or outputs; an empty Orchard-pool bundle
+    // (one zero byte); then the Ironwood bundle, which ends the transaction: its action count, its actions, its flags.
+    assert_eq!(&w.tx[20..25], &[0, 0, 0, 0, 0]);
+    let ironwood = w.tx[25..].to_vec();
+    let actions = usize::from(ironwood[0]);
+    assert!(actions < 0xfd, "a one-byte action count");
+    let mut orchard = ironwood.clone();
+    orchard[1 + actions * ACTION_LENGTH] &= !0b100;
+    w.tx.truncate(24);
+    w.tx.extend_from_slice(&orchard);
+    w.tx.extend_from_slice(&ironwood);
+}
+
 /// The witness's transaction with its own consensus branch id set to `branch_id`.
 pub fn set_transaction_branch_id(w: &mut PaymentWitness, branch_id: u32) {
     // v6: the header word, the version group id, then the consensus branch id (little-endian).
@@ -272,12 +339,16 @@ fn with_memo(w: &mut PaymentWitness, memo: [u8; MEMO_LENGTH]) {
     reanchor(w);
 }
 
-/// The catalog for the statement built for `net`, in the statement's order of checks. The base is a witness that
-/// proves (the synthetic fixture).
+/// The catalog for the statement built for `net`, in the statement's order of checks. The base is the synthetic
+/// fixture ([`synthesize`]): the memo changes write its reference, and each rebinding is exactly its binding with one
+/// field changed.
 pub fn mutations(net: &Network) -> Vec<Mutation> {
     use Error::*;
     use Expected::*;
     let m = |name, apply: fn(&mut PaymentWitness), expected| Mutation { name, apply, expected };
+    let fixture = Binding::fixture();
+    let mut other_salt = FIXTURE_SALT;
+    other_salt[0] ^= 1;
     let mut catalog = vec![
         // 1. The epoch: the build allows it, the witness only names it.
         m("a branch id of no epoch", |w| w.branch_id = 0xdead_beef, Refused(BranchNotAllowed)),
@@ -323,6 +394,14 @@ pub fn mutations(net: &Network) -> Vec<Mutation> {
             "a transparent output, re-anchored",
             |w| {
                 add_transparent_output(w);
+                reanchor(w);
+            },
+            Refused(NotIronwoodOnly),
+        ),
+        m(
+            "an Orchard-pool copy of the Ironwood bundle, re-anchored",
+            |w| {
+                add_orchard_pool_bundle(w);
                 reanchor(w);
             },
             Refused(NotIronwoodOnly),
@@ -396,7 +475,26 @@ pub fn mutations(net: &Network) -> Vec<Mutation> {
         m("value + 1", |w| w.note_value += 1, Refused(NoteCommitmentMismatch)),
         m("value - 1", |w| w.note_value -= 1, Refused(NoteCommitmentMismatch)),
         m("another rseed", |w| w.note_rseed[0] ^= 1, Refused(NotDecryptable)),
+        // The Ironwood domain parses V3 plaintexts only: Error::NoteVersion is unreachable.
+        m(
+            "a V2 note (ZIP 212) in the action, re-anchored",
+            |w| {
+                reencrypt_as(w, &payment_memo(&fixture_payment_ref()), orchard::note::NoteVersion::V2);
+                reanchor(w);
+            },
+            Refused(NotDecryptable),
+        ),
         m("receiver not 43 bytes", |w| w.note_recipient.truncate(42), Refused(Note)),
+        m("pk_d not a point", |w| w.note_recipient[11..].fill(0xff), Refused(Note)),
+        m("pk_d the identity", |w| w.note_recipient[11..].fill(0), Refused(Note)),
+        // esk derives from rseed and rho alone (orchard 0.16): under the opening's esk and pk_d the ciphertext still
+        // opens, to the note with the real diversifier.
+        m("the diversifier changed, pk_d kept", |w| w.note_recipient[0] ^= 1, Refused(NoteCommitmentMismatch)),
+        m(
+            "another address of the receiver's wallet (diversifier index 1)",
+            |w| w.note_recipient = test_receiver_at(FIXTURE_RECEIVER_SPENDING_KEY, 1).to_vec(),
+            Refused(NotDecryptable),
+        ),
         m(
             "another receiver (a valid one)",
             |w| w.note_recipient = test_receiver(OTHER_RECEIVER_SPENDING_KEY).to_vec(),
@@ -452,7 +550,10 @@ pub fn mutations(net: &Network) -> Vec<Mutation> {
         m(
             "a payment for another reference",
             |w| with_memo(w, payment_memo(&payment_ref(FIXTURE_CHAIN_ID, &FIXTURE_ESCROW, FIXTURE_ORDER_ID + 1))),
-            Rebound,
+            Rebound(Binding {
+                payment_ref: payment_ref(FIXTURE_CHAIN_ID, &FIXTURE_ESCROW, FIXTURE_ORDER_ID + 1),
+                ..fixture
+            }),
         ),
         m(
             "the same reference, text after the binding",
@@ -464,14 +565,24 @@ pub fn mutations(net: &Network) -> Vec<Mutation> {
             Accepted,
         ),
         // 6. The receiver commitment and the amount are the journal's to bind.
-        m("another salt", |w| w.salt[0] ^= 1, Rebound),
+        m(
+            "another salt",
+            |w| w.salt[0] ^= 1,
+            Rebound(Binding {
+                receiver_commitment: receiver_commitment(&other_salt, &fixture_receiver()),
+                ..fixture
+            }),
+        ),
         m(
             "a note of another value",
             |w| {
                 w.note_value -= 1;
                 with_memo(w, payment_memo(&fixture_payment_ref()));
             },
-            Rebound,
+            Rebound(Binding {
+                zatoshi: FIXTURE_VALUE - 1,
+                ..fixture
+            }),
         ),
     ]);
     catalog

@@ -150,7 +150,8 @@ fn the_k4_catalog() {
     for net in [TESTNET, MAINNET] {
         let base_journal = verify_on(&net, &base).expect("the base witness proves");
         let catalog = mutations(&net);
-        assert!(catalog.len() >= 40, "{} changes on {}", catalog.len(), net.name);
+        // Mainnet's statement also proves NU6.3, and has one more change.
+        assert_eq!(catalog.len(), if net == MAINNET { 51 } else { 50 }, "changes on {}", net.name);
         for m in catalog {
             let mut w = base.clone();
             (m.apply)(&mut w);
