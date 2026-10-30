@@ -42,6 +42,25 @@ jobs:
           forge build --use 0.8.4 --evm-version istanbul --out "$RUNNER_TEMP/out-0.8.4" \
             --cache-path "$RUNNER_TEMP/cache-0.8.4" src/examples/ZcashFinalityGate.sol
 
+  rust:
+    name: Rust crates and the native K4 catalog (no guest)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust, as rust-toolchain.toml pins it
+        run: rustup toolchain install "$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)" --profile minimal --component rustfmt,clippy
+      - name: Formatting
+        run: cargo fmt -p seam-payment -p seam-chain -p seam-cli -p seam-zkvm-methods -- --check
+      - name: Build (the default members; the guest needs risc0-build, see guests.yml)
+        run: cargo build --locked
+      - name: Tests, with the K4 catalog on both networks' statements (the network tests are ignored)
+        run: cargo test --locked
+      - name: The Mainnet build of the statement
+        run: cargo test --locked -p seam-payment --features mainnet
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
   reference:
     name: Python reference re-checks the real header fixtures
     runs-on: ubuntu-24.04
