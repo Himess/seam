@@ -13,7 +13,11 @@ use risc0_build::{DockerOptionsBuilder, GuestOptionsBuilder, embed_methods_with_
 /// host crates build where no risc0 toolchain is installed.
 fn main() {
     println!("cargo:rerun-if-env-changed=SEAM_DOCKER_GUESTS");
-    let features = if std::env::var_os("CARGO_FEATURE_MAINNET").is_some() { vec!["mainnet".to_owned()] } else { vec![] };
+    let features = if std::env::var_os("CARGO_FEATURE_MAINNET").is_some() {
+        vec!["mainnet".to_owned()]
+    } else {
+        vec![]
+    };
     let mut options = GuestOptionsBuilder::default();
     options.features(features);
     if std::env::var_os("SEAM_DOCKER_GUESTS").is_some() {
