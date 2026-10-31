@@ -41,7 +41,8 @@ contract ShieldedPaymentEscrowForkTest is Test {
     address internal constant PAYEE = address(0xB0B);
     uint256 internal constant AMOUNT = 25e6;
     uint64 internal constant ZAT = 1_000_000;
-    /// @dev About ten Testnet blocks of work after NU7 (docs/INTEGRATING.md § 4).
+    /// @dev About ten Testnet blocks of work after NU7: a demonstration value, seconds of one Equihash ASIC's work and
+    ///      about a millionth of a Mainnet block (docs/INTEGRATING.md § 4). Never reuse it to secure value.
     uint256 internal constant MIN_WORK = 3_556_000;
     uint64 internal constant FINALIZE_DEPTH = 6;
     uint64 internal constant FINALIZE_DELAY = 150;

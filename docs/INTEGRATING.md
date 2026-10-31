@@ -75,13 +75,24 @@ so 10 blocks ≈ 3,556,000. On Mainnet (`RELAY=0x527B6347d2392d17fa5Bd13DF88A436
 259,156,774,611,907: about 2.59 × 10^12 a block.
 [`ZcashFinalityGate`](../contracts/src/examples/ZcashFinalityGate.sol) packages the check.
 
+**Testnet secures nothing.** A block's work is the number of Equihash solutions expected to find it, and a single
+Equihash ASIC finds hundreds of thousands a second: more than all of Testnet's miners together. Ten Testnet blocks of
+work (3,556,000, the value Seam's fork test uses) take it seconds, and are about a millionth of one Mainnet block. A
+Testnet relay is for trying things out: never let it vouch for anything of value, and never carry a Testnet `minWork`
+over to Mainnet.
+
+**Sizing it on Mainnet.** Faking a payment under `minWork` means mining that much work in private, from a fork point
+below the anchor, and overtaking the honest chain with it. Require enough blocks of work that renting the hashrate to do
+so costs more than everything your open obligations hold together.
+
 ## 5. Reorganisations
 
 - **What happens:** a heavier branch replaces the best chain, and `BestChainUpdated` says so, with `forkHeight` below
   the previous tip's height. `isInBestChain` and `confirmationWork` can then change for blocks above the fork.
 - **What to do:** check at the moment you act, and pick a `minWork` that makes reorganising past your action
   uneconomic.
-- **Depth:** the relay follows the most work at any depth. Zebra refuses to reorganise below 1,000 blocks.
+- **Depth:** the relay follows the most work at any depth, where Zebra refuses to reorganise below 1,000 blocks. The
+  relay's finality is never more than the work you require.
 
 ## 6. A relay that falls behind
 
@@ -170,7 +181,11 @@ require(anchorWork >= minWork);
   and a drop of any pending settlement whose anchor left the best chain.
 - **Deadlines, judged on the Zcash side.** Compare the anchor's header time (`headerOf(p.anchor).time`) with your
   deadline, not the time of the proof on your chain, and give provers a grace period after it: a payer who paid in time
-  must not lose to a slow prover or a lagging relay (§ 6).
+  must not lose to a slow prover or a lagging relay (§ 6). This protects honest payers, not against forgery: whoever
+  mines a block picks its time, within consensus bounds.
+- **Size the windows together.** The grace period must cover the time `minWork` takes to pile up on an anchor mined
+  at the deadline, plus proving and a relay that lags. A pending settlement finishes only once the relay has moved on,
+  so a relay nobody feeds holds the order until someone does ([RELAYING.md](RELAYING.md)).
 - **The amount is public:** `zatoshi` is in the journal.
 
 [`ShieldedPaymentEscrow`](../contracts/src/examples/ShieldedPaymentEscrow.sol) puts these together. Its gas is in

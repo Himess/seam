@@ -54,7 +54,8 @@ salt, in a file only its owner may read, and prints the commitment an app commit
   owner can add a verifier under a new selector or remove one, but never replace the verifier behind a selector
   (`RiscZeroVerifierRouter.addVerifier` refuses a selector in use or removed). The payment verifier pins the Groth16
   selector it accepts, so a seal is checked by that one verifier or not at all. A removal would stop proofs from
-  verifying: a risk to liveness, not to safety.
+  verifying: a risk to liveness, not to safety. An app that pins the verifier then needs a new one, and its open orders
+  run towards their refund meanwhile, even those already paid.
 - **The pinned image id.** It is the hash of the guest's ELF, built reproducibly in RISC Zero's Docker builder;
   anyone can rebuild it and compare.
 - **The relay.** The anchor must be on its best chain with enough work on top
@@ -89,6 +90,9 @@ The witness needs the note's opening and the transaction's place in the chain. T
 Either one builds the witness locally with `seam witness`, from chain data any node or lightwalletd server serves.
 Proving runs on any machine with the witness; a witness should never leave a machine its owner doesn't control.
 
+`seam witness` asks the light wallet server for the payment's transaction, by its id, and for its block: that server
+learns which payment is being proven, and from where. Use a server you run, or reach one over Tor, when that matters.
+
 ## 6. How an app consumes a proof
 
 `ZcashPaymentVerifier.verify(journal, seal)` returns the payment and the work on top of its anchor. It reverts unless
@@ -101,9 +105,10 @@ is the app's choice:
   anchor is still final then.
 - **Reorganisations:** drop a pending settlement whose anchor left the best chain; anyone can prove again.
 - **A deadline, judged on the Zcash side:** a payment counts if its anchor's header time is no later than the
-  deadline (the payment's block comes before the anchor). Give provers a grace period after the deadline, and after a
-  dropped settlement, so a slow proof or a lagging relay never costs a payer who paid in time; refund the EVM side only
-  once that window has closed with nothing pending.
+  deadline (the payment's block comes before the anchor, so a payer should pay a few blocks ahead of it). Give provers
+  a grace period after the deadline, and after a dropped settlement, so a slow proof or a lagging relay never costs a
+  payer who paid in time; refund the EVM side only once that window has closed with nothing pending. Size that grace
+  period against the time `minWork` takes to pile up ([INTEGRATING.md](INTEGRATING.md) § 10).
 
 `ShieldedPaymentEscrow` is an example of all four.
 

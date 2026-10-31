@@ -5,6 +5,8 @@ A relay knows only the headers someone submits.
   bad header.
 - **Several feeders:** `submitHeaders` skips headers the relay already has, so two feeders racing waste gas but nothing
   fails. Better: one feeds, and the other takes over when the tip stalls.
+- **Your own:** an app whose users wait on a relay (a deadline, a pending settlement) should run a feeder of its own,
+  or at least watch the tip and start one when it stalls, rather than count on someone else's.
 
 ## Feed a relay
 

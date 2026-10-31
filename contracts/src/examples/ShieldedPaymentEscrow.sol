@@ -101,7 +101,7 @@ contract ShieldedPaymentEscrow is ZcashFinalityGate, ReentrancyGuard {
     /// @param verifier_ The payment verifier; the gate reads its relay and checks its network.
     /// @param minWork_ Work required on top of a payment's anchor (docs/INTEGRATING.md, "Choosing minWork"). Size it
     ///        against the value all open orders hold together: one reorganisation deep enough can fake payments for every
-    ///        order whose receiver and salt the attacker knows.
+    ///        order whose receiver and salt the attacker knows. On a Testnet relay no value is safe at any minWork.
     /// @param finalizeDepth_ Headers of the pending window (Testnet example: 6).
     /// @param finalizeDelay_ Seconds of the pending window (Testnet example: 150).
     /// @param proveGrace_ Seconds to prove a payment made in time (example: one day). Keep both windows short enough that
