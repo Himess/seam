@@ -18,7 +18,7 @@ What matters most:
 ## Scope
 
 - **Contracts:** `contracts/src/relay/`, `contracts/src/interfaces/`, `contracts/src/payment/`, `contracts/src/examples/`
-  (examples, not production code) and `contracts/script/DeployRelay.s.sol`.
+  (examples, not production code) and the deploy scripts, `contracts/script/`.
 - **Payment proofs:** `crates/seam-payment` (the statement), `zkvm/` (the guest, its build and the patched
   `pasta_curves`), `crates/seam-chain` and `crates/seam-cli`.
 - **Tools:** `scripts/relay-feed.sh`, `scripts/gpu-prove.sh`, `contracts/test/relay/tools/` and the workflows in
