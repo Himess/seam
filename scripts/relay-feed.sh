@@ -20,18 +20,27 @@
 # line per round says what happened. A round that can't read the relay, or an hour without progress,
 # ends the script, for the service manager to restart it where an operator sees it.
 set -euo pipefail
+# Bash 4.4 or later (macOS ships 3.2: `brew install bash`), and GNU timeout (`gtimeout` from Homebrew's coreutils).
+if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); then
+  echo "relay-feed.sh needs bash 4.4 or later" >&2
+  exit 2
+fi
 shopt -s inherit_errexit
+TIMEOUT="$(command -v timeout || command -v gtimeout || true)"
+[[ -n "$TIMEOUT" ]] || { echo "relay-feed.sh needs timeout (GNU coreutils; gtimeout on macOS)" >&2; exit 2; }
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FETCH="$ROOT/contracts/test/relay/tools/zcash_p2p_headers.py"
-# .env fills only what the environment leaves unset, and exports nothing: the key never reaches a child process.
+# .env fills only what the environment leaves unset, and exports nothing: the key never reaches a child process. One
+# `NAME=value` a line (an `export ` before it is fine), the value in quotes or not, `~/` for the home directory; no
+# comment after a value.
 if [[ -f "$ROOT/.env" ]]; then
   while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ "$line" =~ ^([A-Z_][A-Z0-9_]*)=(.*)$ ]] || continue
-    name="${BASH_REMATCH[1]}"
-    value="${BASH_REMATCH[2]}"
-    value="${value%\"}"
-    value="${value#\"}"
+    [[ "$line" =~ ^(export[[:space:]]+)?([A-Z_][A-Z0-9_]*)=(.*)$ ]] || continue
+    name="${BASH_REMATCH[2]}"
+    value="${BASH_REMATCH[3]%$'\r'}"
+    if [[ "$value" =~ ^\"(.*)\"$ || "$value" =~ ^\'(.*)\'$ ]]; then value="${BASH_REMATCH[1]}"; fi
+    [[ "$value" == "~/"* ]] && value="$HOME/${value:2}"
     [[ -n "${!name:-}" || -z "$value" ]] || printf -v "$name" '%s' "$value"
   done < "$ROOT/.env"
 fi
@@ -47,6 +56,9 @@ esac
 export ETH_RPC_URL="${RELAY_RPC_URL:-http://127.0.0.1:8545}"
 if [[ -n "${RELAYER_KEYSTORE:-}" ]]; then
   SIGNER=(--keystore "$RELAYER_KEYSTORE" --password-file "${RELAYER_PASSWORD_FILE:?set RELAYER_PASSWORD_FILE too}")
+  # Under a service manager the keystore must be where the service's user can read it, not in someone's home.
+  [[ -r "$RELAYER_KEYSTORE" && -r "$RELAYER_PASSWORD_FILE" ]] ||
+    { echo "can't read RELAYER_KEYSTORE or RELAYER_PASSWORD_FILE" >&2; exit 2; }
 elif [[ -n "${RELAYER_PRIVATE_KEY:-}" ]]; then
   SIGNER=(--private-key "$RELAYER_PRIVATE_KEY")
 else
@@ -93,23 +105,26 @@ echo "feeding a Zcash $NETWORK relay, $BATCH headers per transaction"
 # The relay's best chain as a block locator: its tip, the nine blocks below, then twice as far back at each step,
 # down to the checkpoint.
 full_locator() {
-  local h="$1" step=1 n=0 out=""
+  local h="$1" step=1 n=0 out="" hash
   while ((h > CHECKPOINT)); do
-    out+="${out:+,}$h:$(display_order "$(hash_at "$h")")"
+    hash="$(hash_at "$h")" # an assignment of its own: a failed read stops the script
+    out+="${out:+,}$h:$(display_order "$hash")"
     n=$((n + 1))
     ((n < 10)) || step=$((step * 2))
     h=$((h - step))
   done
-  echo "$out${out:+,}$CHECKPOINT:$(display_order "$(hash_at "$CHECKPOINT")")"
+  hash="$(hash_at "$CHECKPOINT")"
+  echo "$out${out:+,}$CHECKPOINT:$(display_order "$hash")"
 }
 
 # Fetches up to BATCH headers after the locator $1 into $TMP/headers.jsonl; returns the fetcher's status (3: no peer
-# continues from the locator's blocks). Its log holds peer addresses: it stays in $TMP.
+# continues from the locator's blocks). Its log holds peer addresses: it stays in $TMP. The fetcher's own deadline,
+# plus one peer's longest wait, ends before `timeout` would.
 fetch() {
   local status=0
   rm -f "$TMP/headers.jsonl"
-  timeout 300 python3 -I "$FETCH" --network "$NETWORK" --locator "$1" --count "$BATCH" --out "$TMP/headers.jsonl" \
-    2> "$TMP/fetch.log" || status=$?
+  "$TIMEOUT" 300 python3 -I "$FETCH" --network "$NETWORK" --locator "$1" --count "$BATCH" --deadline 180 \
+    --out "$TMP/headers.jsonl" 2> "$TMP/fetch.log" || status=$?
   return "$status"
 }
 
@@ -117,16 +132,21 @@ fetch() {
 # carriage returns Python writes on Windows).
 unknown_headers() {
   python3 -I - "$TMP/headers.jsonl" "$RELAY" <<'EOF' | tr -d '\r' > "$TMP/new.txt"
-import json, re, subprocess, sys
+import json, re, subprocess, sys, time
 path, relay = sys.argv[1:3]
 for line in open(path):
     item = json.loads(line)
     internal = "0x" + bytes.fromhex(item["hash"])[::-1].hex()
-    # The RPC URL comes from the environment (ETH_RPC_URL): it is in neither this command nor the log.
-    run = subprocess.run(
-        ["cast", "call", relay, "headerOf(bytes32)((bool,bytes32,uint256,uint256,uint256,uint256,bytes32,bytes32))", internal],
-        capture_output=True, text=True,
-    )
+    # The RPC URL comes from the environment (ETH_RPC_URL): it is in neither this command nor the log. Retried twice
+    # over a transient error, as every relay read is.
+    for attempt in range(3):
+        run = subprocess.run(
+            ["cast", "call", relay, "headerOf(bytes32)((bool,bytes32,uint256,uint256,uint256,uint256,bytes32,bytes32))", internal],
+            capture_output=True, text=True,
+        )
+        if run.returncode == 0:
+            break
+        time.sleep(5)
     if run.returncode != 0:
         sys.exit("reading the relay failed: " + re.sub(r"[A-Za-z][A-Za-z0-9+.-]*://\S+", "<rpc url>", run.stderr.strip())[:300])
     if not run.stdout.strip().startswith("(true"):
@@ -149,7 +169,12 @@ submit() {
   echo "$landed"
 }
 
-cont=""         # height:hash of the last header fetched when all of a batch was known: the next round goes on from it
+# The last header fetched, as height:hash, when the relay's best chain isn't the peers' yet (all of a batch was known
+# already, or the batch just submitted didn't make its branch the best): the next round goes on from it.
+cont=""
+last_header() {
+  tail -n 1 "$TMP/headers.jsonl" | python3 -I -c 'import json, sys; i = json.load(sys.stdin); print("{}:{}".format(i["height"], i["hash"]))' | tr -d '\r'
+}
 progress_at=$SECONDS
 while true; do
   tip="$(read_relay "bestChainTip()(bytes32,uint256,uint256)")"
@@ -175,9 +200,15 @@ while true; do
     if ((new > 0)); then
       landed="$(submit)"
       cont=""
+      if ((landed == new)); then
+        # A branch that isn't the best yet (a deep reorganisation): go on from its last header next round.
+        last="$(last_header)"
+        best="$(read_relay "bestChainTip()(bytes32,uint256,uint256)" | sed -n 1p)"
+        [[ "$best" == "0x$(display_order "${last#*:}")" ]] || cont="$last"
+      fi
     else
       # Known already, yet not the relay's best chain: go on from the last of them next round.
-      cont="$(tail -n 1 "$TMP/headers.jsonl" | python3 -I -c 'import json, sys; i = json.load(sys.stdin); print("{}:{}".format(i["height"], i["hash"]))' | tr -d '\r')"
+      cont="$(last_header)"
     fi
   fi
 

@@ -12,6 +12,7 @@ A relay knows only the headers someone submits.
 
 You need:
 - Foundry's `cast`;
+- bash 4.4 or later and GNU `timeout` (macOS ships bash 3.2 and no `timeout`: `brew install bash coreutils`);
 - Python 3 (standard library only);
 - outbound TCP to Zcash peers (port 18233 on Testnet, 8233 on Mainnet);
 - a Base Sepolia RPC URL;
@@ -65,7 +66,8 @@ about eight days. Mainnet before NU7 has 75-second blocks: 1,152 headers and abo
   readable by it only (`chown seam:seam .env && chmod 600 .env`). Save the unit as
   `/etc/systemd/system/seam-feeder.service`, then run `systemctl enable --now seam-feeder`.
 - **macOS (launchd):** save the template below as `~/Library/LaunchAgents/<label>.plist`. Use absolute paths: launchd
-  doesn't expand `~`. `bash -lc` loads the login profile, so `cast` is on the PATH.
+  doesn't expand `~`. Its `PATH` must reach `cast`, `python3` and Homebrew's bash and `gtimeout` (`/opt/homebrew/bin`
+  on Apple silicon, `/usr/local/bin` on Intel).
 
 ```ini
 [Unit]
@@ -107,10 +109,14 @@ systemctl stop seam-feeder              # stop it; `systemctl disable seam-feede
   <string>com.example.seam-feeder</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/bin/bash</string>
-    <string>-lc</string>
-    <string>exec /Users/YOU/seam/scripts/relay-feed.sh 0xRELAY</string>
+    <string>/Users/YOU/seam/scripts/relay-feed.sh</string>
+    <string>0xRELAY</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/YOU/.foundry/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
   <key>WorkingDirectory</key>
   <string>/Users/YOU/seam</string>
   <key>RunAtLoad</key>
@@ -143,8 +149,8 @@ Either way the feeder exits on an RPC error, and the service restarts it after a
    `build_fixture.py … --checkpoint-height <H> --count 1 --cipherscan`, then `zcash_header_check.py fixture …`.
 3. **Deploy.** From `contracts/`, with `DEPLOYER_PRIVATE_KEY` set:
    `RELAY_CHECKPOINT=<file> DEPLOYMENT_NAME=<name> forge script script/DeployRelay.s.sol --rpc-url … --broadcast`.
-   - Always set `DEPLOYMENT_NAME`: the Testnet default, `base-sepolia`, is the record of Zecured's live run.
-   - A simulation writes the record too, with a simulated address.
+   - `DEPLOYMENT_NAME` names the record, `deployments/<name>.relay.json`. Only a broadcast writes it, and the script
+     refuses a name whose record exists.
 4. **Verify** the source on the chain's explorer (`--verify` with an Etherscan API key, or `--verifier sourcify`).
 5. **Feed** it to the tip, and compare its tip with an explorer.
 
