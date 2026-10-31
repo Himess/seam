@@ -321,7 +321,7 @@ const ACTION_LENGTH: usize = 5 * 32 + ENC_CIPHERTEXT_SIZE + OUT_CIPHERTEXT_SIZE;
 /// The witness's transaction with the 32 bytes at `offset` in its first action all 0xff: above the field's modulus,
 /// so no canonical encoding of a field element or a point (an action is cv_net, nf, rk, cmx, epk, ... in that order).
 fn non_canonical(w: &mut PaymentWitness, offset: usize) {
-    // v6: 20 header bytes, four empty counts, the Ironwood action count, then its first action.
+    // v6: 20 header bytes, five empty counts, the Ironwood action count, then its first action.
     assert_eq!(&w.tx[20..25], &[0, 0, 0, 0, 0]);
     let at = 26 + offset;
     w.tx[at..at + 32].fill(0xff);
@@ -362,7 +362,7 @@ fn drop_ironwood_bundle(w: &mut PaymentWitness) {
 
 /// The witness's transaction with its Ironwood bundle's `enableOutputs` flag cleared.
 fn disable_outputs(w: &mut PaymentWitness) {
-    // v6: 20 header bytes, four empty counts, then the Ironwood bundle: its action count, its actions, its flags.
+    // v6: 20 header bytes, five empty counts, then the Ironwood bundle: its action count, its actions, its flags.
     assert_eq!(&w.tx[20..25], &[0, 0, 0, 0, 0]);
     let actions = usize::from(w.tx[25]);
     assert!(actions < 0xfd, "a one-byte action count");

@@ -16,5 +16,7 @@ Exactly what changes, in each field:
 - **Unchanged:** the `const fn`s (`mul`, `square`, `from_raw`), `from_u512` and `to_repr`. They return the same
   canonical Montgomery value as the accelerated paths.
 - **The invariant it relies on:** every `Fp` and `Fq` value is canonical, below the modulus. The zero check before an
-  inversion and the square-root tables depend on it. The checked `bigint2` calls only ever return canonical values,
-  and `from_repr` refuses an encoding at or above the modulus before using it.
+  inversion and the square-root tables depend on it. The checked `bigint2` calls only ever return canonical values.
+  `from_repr` multiplies an encoding by R² before its range check, one at or above the modulus too, which the
+  accelerated multiplication reduces like any input; the check then refuses it, natively and in the zkVM alike (K4's
+  non-canonical encodings).

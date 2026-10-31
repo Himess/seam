@@ -215,7 +215,7 @@ across the activation follow it.
 | `contracts/script/DeployRelay.s.sol`, `DeployPaymentVerifier.s.sol` | Deploy a relay from a parameter file and a checkpoint, and a payment verifier for a relay. |
 | `contracts/deployments/` | Deployment records: Seam's two relays and its payment verifier, and the relay of Zecured's live run on 27 October 2026. |
 | `contracts/test/relay/` | **80 tests on real Testnet and Mainnet headers:**<br>• 30 headers across NU7's activation<br>• Equihash checked against the `equihash` crate Zebra uses, on 592 cases<br>• an independent Python implementation of the rules<br>• the P2P header tools |
-| `contracts/test/examples/`, `contracts/test/deployments/`, `contracts/test/payment/` | 45 tests of the reader, the examples, the payment verifier and Seam's three deployment records; three check the real payment's seal, two of them on a Base Sepolia fork and one against the live verifier. |
+| `contracts/test/examples/`, `contracts/test/deployments/`, `contracts/test/payment/` | 46 tests of the reader, the examples, the payment verifier and Seam's three deployment records; three check the real payment's seal, two of them on a Base Sepolia fork and one against the live verifier. |
 | `scripts/relay-feed.sh` | Feeds a relay from Zcash peers. |
 | `scripts/gpu-prove.sh` | Builds the guests and proves a payment on a rented NVIDIA machine. |
 | `abi/` | ABI JSON for TypeScript and other clients. |

@@ -20,7 +20,7 @@ How a contract reads a Seam relay safely.
 ## 2. Install
 
 ```sh
-forge install Himess/seam@v0.1.0
+forge install Himess/seam@v0.2.0
 ```
 
 Add the remapping `seam/=lib/seam/contracts/src/`, and, to compile the relay or the examples, OpenZeppelin's

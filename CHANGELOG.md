@@ -20,7 +20,12 @@
 - A refused header no longer reverts the round.
 - It prints one line per round, and stops after an hour without progress.
 - The RPC URL stays off command lines and out of the log, and so does the key with a keystore.
+- It reads `.env` as settings instead of running it, and fills only what the environment leaves unset.
+- It needs bash 4.4 and `timeout` (on macOS: `brew install bash coreutils`).
 - `zcash_p2p_headers.py` takes `--locator`.
+
+**Deploy scripts:** `DeployRelay.s.sol` needs `DEPLOYMENT_NAME`. It and `DeployPaymentVerifier.s.sol` refuse a name
+whose record exists, and write the record only when they broadcast.
 
 **Shielded payment proofs** (docs/PAYMENTS.md), adapted from Zecured's payment path at `73de9f9`:
 - `crates/seam-payment`: the statement a payment proof proves.
@@ -54,8 +59,8 @@
   - the example escrow adds `refundTo`, refuses itself as a payee or a destination, and bounds its windows and
     deadlines;
   - `seam witness` checks that the server sent the transaction it asked for;
-  - the CLI never overwrites a file it writes, keeps file contents out of its errors, and never hands a witness to
-    Bonsai;
+  - the CLI never overwrites a file it writes a secret to and checks those files before it starts, keeps file
+    contents out of its errors, and never hands a witness to Bonsai;
   - seven more K4 changes;
   - the docs say what a payer must check before paying, who can prove today, what the light wallet server learns, and
     why Testnet secures nothing.

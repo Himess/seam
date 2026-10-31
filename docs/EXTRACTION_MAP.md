@@ -7,11 +7,11 @@ rest moves here. The last row lists what Seam never takes.
 |---|---|---|
 | `contracts/src/relay/` | same path | v0.1.0, unchanged (README text updated) |
 | `contracts/test/relay/` (tests, fixtures, header tools) | same path | v0.1.0, unchanged; v0.2.0: NU7's Mainnet height, the P2P version per network, one test rebuilt and one added |
-| `contracts/script/DeployRelay.s.sol`, `contracts/config/relay-*.json` | same paths | v0.1.0, unchanged; v0.2.0: NU7's Mainnet height in `relay-mainnet.json` |
+| `contracts/script/DeployRelay.s.sol`, `contracts/config/relay-*.json` | same paths | v0.1.0, unchanged; v0.2.0: NU7's Mainnet height in `relay-mainnet.json`, and the script needs `DEPLOYMENT_NAME` and never overwrites a record |
 | `contracts/deployments/base-sepolia.relay*.json` | same paths | v0.1.0: the relay of Zecured's live run, 27 October 2026 |
-| `scripts/relay-feed.sh`, `research/relay-synthetic-headers/` | same paths | v0.1.0; v0.2.0: the feeder follows a Mainnet relay with Mainnet peers |
+| `scripts/relay-feed.sh`, `research/relay-synthetic-headers/` | same paths | v0.1.0; v0.2.0: the feeder follows the relay's network, with a block locator and bounded waits (CHANGELOG) |
 | (new) | `contracts/src/interfaces/`, `contracts/src/examples/`, `contracts/test/examples/`, `contracts/test/deployments/`, `abi/`, `docs/INTEGRATING.md`, `docs/RELAYING.md`, `contracts/deployments/seam-base-sepolia.relay*.json` | v0.1.0 |
-| (new) | `contracts/deployments/seam-base-sepolia-mainnet.relay*.json`, `CLAUDE.md` | v0.2.0 |
+| (new) | `contracts/deployments/seam-base-sepolia-mainnet.relay*.json`, `contracts/deployments/seam-base-sepolia.payment-verifier.json`, `contracts/script/DeployPaymentVerifier.s.sol`, `CLAUDE.md` | v0.2.0 |
 | (new) | `docs/PAYMENTS.md`, `contracts/test/payment/`, `contracts/test/examples/ShieldedPaymentEscrow.t.sol`, `seam memo` | v0.2.0 |
 | `tier2/payment-statement`, `tier2/payment-k4`, the inclusion checks of `tier2/statement` | `crates/seam-payment` | v0.2.0, adapted: a text memo binding, a versioned journal, K4 in `k4.rs` |
 | `tier2/methods/payment`, `tier2/vendor/pasta_curves` | `zkvm/guest`, `zkvm/methods`, `zkvm/vendor/pasta_curves` | v0.2.0 |
