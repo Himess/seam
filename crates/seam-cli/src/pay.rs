@@ -114,7 +114,9 @@ pub fn run(args: PayArgs) -> Result<()> {
 
     if args.new_wallet {
         let address_out = args.address_out.context("--address-out")?;
-        ensure!(!args.wallet.exists(), "{} exists: a new wallet never replaces one", args.wallet.display());
+        let mut outputs = vec![args.wallet.as_path(), address_out.as_path()];
+        outputs.extend(args.ufvk_out.as_deref());
+        crate::ensure_new(&outputs)?;
         let (_, tip) = runtime.block_on(connect())?;
         let sk = loop {
             let mut bytes = [0u8; 32];
@@ -147,7 +149,7 @@ pub fn run(args: PayArgs) -> Result<()> {
         return Err(anyhow!("--to, --zat, --ref and --opening name the payment"));
     };
     let payment_ref = parse_ref(&payment_ref).context("--ref")?;
-    ensure!(!opening_out.exists(), "{} exists: an opening is never overwritten", opening_out.display());
+    crate::ensure_new(&[opening_out.as_path()])?;
     let (recipient, other_receivers) = ironwood_receiver(network, &to).context("--to")?;
     if other_receivers {
         eprintln!("note: the address also has other receivers; the payment goes to its Orchard-protocol receiver");

@@ -104,13 +104,41 @@ pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
         .with_context(|| format!("write {} (a new file: an existing one is never replaced)", path.display()))
 }
 
+/// Refuses, before any work, the outputs `write_private` would refuse at the end: a path that exists (a file or a
+/// link) or one named twice. A command then never stops half done, such as a new wallet without its address.
+pub(crate) fn ensure_new(paths: &[&Path]) -> Result<()> {
+    for (i, path) in paths.iter().enumerate() {
+        ensure!(
+            std::fs::symlink_metadata(path).is_err(),
+            "{} exists: an existing file is never replaced",
+            path.display()
+        );
+        ensure!(!paths[..i].contains(path), "{} is named for two outputs", path.display());
+    }
+    Ok(())
+}
+
 /// Warns when the light wallet server is reached without TLS, unless on this machine. Never prints the URL, which may
 /// carry an API key.
 pub(crate) fn warn_if_plaintext(url: &str) {
-    let local = ["http://localhost", "http://127.0.0.1", "http://[::1]"].iter().any(|p| url.starts_with(p));
-    if url.starts_with("http://") && !local {
+    if plaintext_remote(url) {
         eprintln!("warning: the light wallet server is reached without TLS: the network in between sees every request");
     }
+}
+
+/// Whether `url` is plain `http` to a host other than this machine (`localhost`, `127.0.0.1`, `[::1]`).
+fn plaintext_remote(url: &str) -> bool {
+    let url = url.to_ascii_lowercase();
+    let Some(rest) = url.strip_prefix("http://") else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let host = authority.rsplit_once('@').map_or(authority, |(_, host)| host);
+    let host = match host.strip_prefix('[') {
+        Some(v6) => v6.split_once(']').map_or(v6, |(host, _)| host),
+        None => host.split_once(':').map_or(host, |(host, _)| host),
+    };
+    !matches!(host, "localhost" | "127.0.0.1" | "::1")
 }
 
 fn run(cli: Cli) -> Result<()> {
@@ -145,5 +173,46 @@ fn main() -> ExitCode {
             eprintln!("error: start a thread: {e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plaintext_remote_is_http_to_another_machine() {
+        for url in [
+            "http://lwd.example.com:9067",
+            "HTTP://lwd.example.com",
+            "http://localhost.example.com:9067",
+            "http://127.0.0.1.example.com",
+            "http://localhost@lwd.example.com",
+            "http://[::2]:9067",
+        ] {
+            assert!(plaintext_remote(url), "{url}");
+        }
+        for url in [
+            "https://lwd.example.com:443",
+            "http://localhost:9067",
+            "HTTP://LocalHost",
+            "http://127.0.0.1:9067/",
+            "http://[::1]:9067",
+            "http://user:key@localhost:9067",
+        ] {
+            assert!(!plaintext_remote(url), "{url}");
+        }
+    }
+
+    #[test]
+    fn ensure_new_refuses_existing_and_repeated_outputs() {
+        let dir = std::env::temp_dir().join(format!("seam-ensure-new-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (taken, free) = (dir.join("taken"), dir.join("free"));
+        std::fs::write(&taken, b"").unwrap();
+        assert!(ensure_new(&[free.as_path()]).is_ok());
+        assert!(ensure_new(&[free.as_path(), taken.as_path()]).is_err());
+        assert!(ensure_new(&[free.as_path(), free.as_path()]).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

@@ -62,6 +62,12 @@ fn witness_refuses_what_it_cannot_build() {
     assert!(!network.status.success() && stderr(&network).contains("needs a build"));
     let missing = seam(&[&base[..], &["--opening", "no-such-opening.json"]].concat());
     assert!(!missing.status.success() && stderr(&missing).contains("read salt"));
+    // An output that exists is refused before anything is read: here the crate's own manifest.
+    let mut taken = base;
+    taken[8] = "Cargo.toml";
+    let out_exists = seam(&[&taken[..], &["--opening", "no-such-opening.json"]].concat());
+    assert!(!out_exists.status.success() && stderr(&out_exists).contains("exists"), "{}", stderr(&out_exists));
+    assert!(std::fs::read_to_string("Cargo.toml").unwrap().contains("name = \"seam-cli\""));
 }
 
 /// A directory of the system's temporary directory for one test, which the test removes.
@@ -149,6 +155,18 @@ fn pay_refuses_what_it_cannot_send() {
     }
     let bad_receiver = seam(&payment);
     assert!(!bad_receiver.status.success() && stderr(&bad_receiver).contains("--to"));
+    // Every output of a new wallet is checked before the wallet is made, and before the server is asked anything.
+    let taken = dir.join("taken.txt");
+    std::fs::write(&taken, b"").unwrap();
+    let taken = taken.display().to_string();
+    let address_exists = seam(&["pay", "--wallet", &wallet, "--new-wallet", "--address-out", &taken]);
+    assert!(
+        !address_exists.status.success() && stderr(&address_exists).contains("exists"),
+        "{}",
+        stderr(&address_exists)
+    );
+    let twice = seam(&["pay", "--wallet", &wallet, "--new-wallet", "--address-out", &wallet]);
+    assert!(!twice.status.success() && stderr(&twice).contains("named for two outputs"), "{}", stderr(&twice));
     assert!(!std::path::Path::new(&wallet).exists() && !std::path::Path::new("o.json").exists());
     std::fs::remove_dir_all(dir).unwrap();
 }

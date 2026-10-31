@@ -62,6 +62,7 @@ enum Source {
 
 pub async fn run(args: WitnessArgs) -> Result<()> {
     let network = crate::network(args.network.as_deref())?;
+    crate::ensure_new(&[args.out.as_path()])?;
     let salt = parse_ref(&read_secret_text(&args.salt_file)?).context("the salt file: 64 hex digits")?;
     let source = match (&args.opening, &args.ufvk_file) {
         // serde_json's message can quote the file's text: only its position is reported.

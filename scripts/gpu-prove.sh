@@ -22,8 +22,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CUDA_SEAM="$ROOT/target/release/seam"
 # The prover writes its segments, which hold the witness, to TMPDIR: in memory (tmpfs), never on the disk, and removed
-# by `wipe`.
-SCRATCH=/dev/shm/seam-prove
+# by `wipe`. SEAM_SCRATCH names another new directory in memory where /dev/shm is missing or too small (a container's
+# is 64 MB); give `wipe` the same.
+SCRATCH="${SEAM_SCRATCH:-/dev/shm/seam-prove}"
 export PATH="$HOME/.cargo/bin:$HOME/.risc0/bin:$PATH"
 
 # The seam that embeds the `net` guest, built in Docker by `guests` (no `cuda`): parity, export-elf and the Docker wrap.
@@ -96,7 +97,12 @@ prove() {
   : "${SEAM_PAYMENT_ELF:?SEAM_PAYMENT_ELF: the pinned payment guest}"
   [[ -x "$(docker_seam test)" ]] || { echo "run guests first: the Groth16 wrap uses its build" >&2; exit 1; }
   mkdir -p "$out"
-  mkdir -p -m 700 "$SCRATCH"
+  # A new directory only this user can open, never one left behind or made by someone else.
+  if ! mkdir -m 700 "$SCRATCH"; then
+    echo "$SCRATCH: run wipe first, or set SEAM_SCRATCH to a new directory in memory" >&2
+    exit 1
+  fi
+  df -h "$SCRATCH" | tail -1
   export TMPDIR="$SCRATCH"
   # 2^20-cycle segments suit a 24 GB GPU (seam's default, 2^18, suits an 8 GB machine).
   export SEAM_SEGMENT_PO2="${SEAM_SEGMENT_PO2:-20}"

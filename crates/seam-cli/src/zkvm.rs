@@ -246,12 +246,12 @@ fn parity(guest: &Guest, input: &str) -> Result<()> {
 fn refuse_remote_proving() -> Result<()> {
     let prover = std::env::var("RISC0_PROVER").unwrap_or_default().to_lowercase();
     ensure!(
-        matches!(prover.as_str(), "" | "local" | "ipc"),
-        "RISC0_PROVER={prover}: seam proves on this machine only (unset it, or local, or ipc)"
+        matches!(prover.as_str(), "" | "local" | "ipc" | "actor"),
+        "RISC0_PROVER={prover}: seam proves on this machine only (unset it, or local, ipc or actor)"
     );
     ensure!(
-        prover == "local" || prover == "ipc" || std::env::var_os("BONSAI_API_URL").is_none(),
-        "BONSAI_API_URL is set, which would send the witness to Bonsai: unset it, or set RISC0_PROVER=local or ipc"
+        !prover.is_empty() || std::env::var_os("BONSAI_API_URL").is_none(),
+        "BONSAI_API_URL would send the witness to Bonsai: unset it, or set RISC0_PROVER=local, ipc or actor"
     );
     Ok(())
 }
