@@ -16,8 +16,9 @@ A proof is a RISC Zero receipt (wrapped in Groth16) that the guest accepted a pr
    Sapling spend or output, and no Orchard-pool action.
 3. **Inclusion.** The transaction's txid reaches the `hashMerkleRoot` of its block B along a SHA-256d path. B's ZIP 221
    history-tree leaf, through its path and the peaks, with the auth data root of a later header T, reaches T's
-   `hashBlockCommitments` (ZIP 244). Every node of that tree is personalized with the epoch's branch id, so B and T are
-   in the same epoch.
+   `hashBlockCommitments` (ZIP 244). Every node of that tree is personalized with the epoch's branch id, so T is in
+   B's epoch, or is the next epoch's activation block, whose history ZIP 221 and Zebra still take from the previous
+   epoch (read in their code; no real activation block has been tried as an anchor).
 4. **The note.** The witness's opening (a 43-byte raw receiver, the value and rseed) rebuilds a V3 note (ZIP 2005)
    whose rho is the nullifier its action spends. The action's ciphertext, recovered with the ephemeral secret that note
    derives and its `pk_d`, yields exactly that note. So the receiver's wallet finds it and can spend it.
@@ -57,8 +58,12 @@ salt, in a file only its owner may read, and prints the commitment an app commit
   Zero puts in front of each verifier (its guardian can trigger it at once), would stop proofs from verifying: a risk
   to liveness, not to safety. An app that pins the verifier then needs a new one, and its open orders run towards
   their refund meanwhile, even those already paid.
-- **The pinned image id.** It is the hash of the guest's ELF, built reproducibly in RISC Zero's Docker builder;
-  anyone can rebuild it and compare.
+- **The pinned image id.** It is RISC Zero's image id of the guest's ELF, built reproducibly in RISC Zero's Docker
+  builder; anyone can rebuild it and compare (`zkvm/pinned-image-ids.txt` also lists the ELF's SHA-256).
+- **What the guest is built from:** pre-release Zcash crates (`zcash_primitives` 0.31.0-pre.1, `zcash_protocol`
+  0.11.0-pre.0), and a patched `pasta_curves` that only the zkVM build compiles (`zkvm/vendor/pasta_curves`,
+  `SEAM_PATCH.md`): the native tests never run the patch; `seam parity` does.
+- **The Groth16 trusted setup** of RISC Zero's verifier.
 - **The relay.** The anchor must be on its best chain with enough work on top
   ([INTEGRATING.md](INTEGRATING.md) § 4). The relay checks every header, but someone has to feed it.
 - **The statement.** It checks the rules above and nothing else: no proof of work (the relay does) and no Halo 2 proof

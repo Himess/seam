@@ -23,7 +23,8 @@ How a contract reads a Seam relay safely.
 forge install Himess/seam@v0.1.0
 ```
 
-Add the remapping `seam/=lib/seam/contracts/src/`. Then:
+Add the remapping `seam/=lib/seam/contracts/src/`, and, to compile the relay or the examples, OpenZeppelin's
+(`@openzeppelin/contracts/=lib/seam/contracts/lib/openzeppelin-contracts/contracts/`). Then:
 
 - **`seam/interfaces/IZcashHeaderRelayReader.sol`:** the read side, for any 0.8 compiler (CI builds it with solc
   0.8.0). Its selectors and return encodings are the relay's
@@ -162,14 +163,20 @@ require(p.paymentRef == keccak256(abi.encode(block.chainid, address(this), oblig
 require(p.receiverCommitment == receiverCommitment);
 require(p.zatoshi >= price);
 require(anchorWork >= minWork);
-// Then settle this obligation, once.
+require(relay.headerOf(p.anchor).time <= deadline);
+// Then start a pending window, and settle this obligation once, after it, if the anchor is still final.
 ```
+
+The bullets below say why each line is there, and what else an app needs;
+[`ShieldedPaymentEscrow`](../contracts/src/examples/ShieldedPaymentEscrow.sol) has them all.
 
 - **Check the verifier once, as you check the relay (§ 1):**
   - `relay()` is the relay you checked, and `networkId()` its network;
   - `imageId()` is the guest pinned for that network in `zkvm/pinned-image-ids.txt`, which anyone can rebuild;
   - `riscZeroVerifier()` is RISC Zero's verifier router on your chain, and `selector()` the Groth16 verifier it
-    dispatches to.
+    dispatches to. On Base Sepolia, Seam's fork test uses the router `0x0b144E07A0826182B6b59788c34b32Bfa86Fb711` and
+    the selector `0x73c457ba` (risc0 3.0); the allowed branch ids are NU7's `0x77190AD9` (and NU6.3's `0x37A5165B` on
+    Mainnet).
 - **One payment, one settlement.** `verify` is stateless: it accepts the same proof any number of times, and one
   payment under many anchors. Bind each `paymentRef` to one obligation and settle it once.
 - **A reference only you use.** Derive `paymentRef` from your chain id, your contract and the obligation: a proof made

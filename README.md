@@ -188,7 +188,15 @@ cargo test
 This runs the payment statement's K4 catalog natively, on both networks' statements. Three tests that reach Zcash
 Testnet peers and a light wallet server are ignored; `crates/seam-chain/tests/network.rs` says how to run them. The
 guest builds on Linux or macOS only, with `cargo build -p seam-zkvm-methods`: reproducibly in RISC Zero's Docker
-builder with `SEAM_DOCKER_GUESTS=1`, otherwise with the local risc0 toolchain.
+builder with `SEAM_DOCKER_GUESTS=1`, otherwise with the local risc0 toolchain. Either way it needs rzup's Rust 1.97.0
+and r0vm 3.0.6. The Docker build sends the whole repository to Docker but `target/` and `.git/`: build from a clean
+copy (`git archive`), with no `.env`, wallet or witness in it, as `scripts/gpu-prove.sh guests` does.
+
+To prove: `cargo build --release -p seam-cli --features zkvm` (with `cuda` on an NVIDIA GPU; `mainnet` for Mainnet),
+then `seam execute <witness.json>` (cycles), `seam prove <witness.json> <receipt>` and
+`seam groth16 <receipt> <seal.json>`, or `seam seal` for both. `SEAM_PAYMENT_ELF=<pinned ELF>` proves the pinned guest
+rather than the one this build embeds, whose image id depends on the machine unless built in Docker. The Groth16 wrap
+needs x86 and Docker. [`scripts/gpu-prove.sh`](scripts/gpu-prove.sh) does all of it on a rented GPU.
 
 **The statement's fixtures (TEST-ONLY).** Both are in `crates/seam-payment/tests/fixtures/`:
 - `TEST-ONLY_testnet_ironwood_tx.json` holds public chain data only: a real Ironwood-only transaction mined on Zcash

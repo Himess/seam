@@ -10,7 +10,7 @@ import {ZcashHeaderRelay} from "../src/relay/ZcashHeaderRelay.sol";
 ///         (config/relay-<network>.json) and a trusted checkpoint in the format of test/relay/fixtures (built by
 ///         test/relay/tools/build_fixture.py: `checkpoint_hash`, `checkpoint_height`, the times and nBits of the 113
 ///         blocks ending with the checkpoint, and `network` when known). Headers are then submitted by anyone
-///         (scripts/relay-feed.sh, the bots' relayer).
+///         (scripts/relay-feed.sh).
 /// @dev Environment: DEPLOYER_PRIVATE_KEY (never logged); RELAY_CHECKPOINT (path of the checkpoint file, readable
 ///      under fs_permissions); optional RELAY_NETWORK (`testnet`, the default, or `mainnet`: config/relay-<network>.json)
 ///      or RELAY_CONFIG (the path of another parameter file); DEPLOYMENT_NAME: writes deployments/<name>.relay.json,

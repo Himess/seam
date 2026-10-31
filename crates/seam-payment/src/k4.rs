@@ -46,7 +46,8 @@ pub const FIXTURE_SALT: [u8; 32] = [0x5a; 32];
 /// The payment note's value (0.025 TAZ) and rseed.
 pub const FIXTURE_VALUE: u64 = 2_500_000;
 pub const FIXTURE_RSEED: [u8; 32] = [0x42; 32];
-/// The spending keys of the fixture's receiver and of another valid receiver: test values, which hold no funds.
+/// The spending keys of the fixture's receiver and of another valid receiver: public test values, which hold no funds.
+/// Their addresses are valid on Mainnet too, and anyone can spend what is sent to them: never pay them.
 pub const FIXTURE_RECEIVER_SPENDING_KEY: [u8; 32] = [0x07; 32];
 pub const OTHER_RECEIVER_SPENDING_KEY: [u8; 32] = [0x08; 32];
 
