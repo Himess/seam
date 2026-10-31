@@ -113,6 +113,25 @@ contract ShieldedPaymentEscrowForkTest is Test {
         assertEq(ref, PAYMENT_REF);
     }
 
+    /// @notice The real seal proves its own journal and nothing else: one more zatoshi in the journal, and RISC Zero's
+    ///         Groth16 check through the real router refuses it.
+    function test_fork_theRealSealProvesItsJournalOnly() public {
+        if (!vm.exists(FIXTURE)) {
+            vm.skip(true);
+            return;
+        }
+        string memory json = vm.readFile(FIXTURE);
+        bytes memory journal = vm.parseJsonBytes(json, ".journal");
+        bytes memory seal = vm.parseJsonBytes(json, ".seal");
+        if (!_fork(vm.parseJsonUint(json, ".proveBlock"))) return;
+        _deploy(vm.parseJsonBytes32(json, ".imageId"));
+        (ZcashPayment memory p,) = verifier.verify(journal, seal);
+        assertEq(p.zatoshi, ZAT);
+        journal[191] ^= 0x01; // zatoshi, the journal's last word: 1,000,001
+        vm.expectRevert();
+        verifier.verify(journal, seal);
+    }
+
     /// @notice The real payment, proven, settles its order: `prove` verifies the real seal through the real router and
     ///         finds the anchor in the real relay with MIN_WORK on top; `finalize` pays the payee FINALIZE_DEPTH
     ///         headers later.

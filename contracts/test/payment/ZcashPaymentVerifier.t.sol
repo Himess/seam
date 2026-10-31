@@ -11,7 +11,7 @@ import {IZcashPaymentVerifier, ZcashPayment} from "../../src/payment/IZcashPayme
 import {ZcashPaymentVerifier} from "../../src/payment/ZcashPaymentVerifier.sol";
 
 /// @notice ZcashPaymentVerifier with a MOCK router on a relay fed with real Testnet headers. The fork test with a real
-///         seal through RISC Zero's router is test/payment/PaymentFork.t.sol.
+///         seal through RISC Zero's router is test/examples/ShieldedPaymentEscrowFork.t.sol.
 contract ZcashPaymentVerifierTest is PaymentFixtures {
     ZcashHeaderRelay internal relay;
     RealFixture internal fx;

@@ -20,8 +20,23 @@ Shielded payment proofs (docs/PAYMENTS.md), adapted from Zecured's payment path 
 - A real payment of 0.01 TAZ, proven on an RTX 4090 (19.9 M cycles; the STARK in 43 s, its Groth16 wrap in 34 s),
   settles the example escrow's order on a Base Sepolia fork, through RISC Zero's router and Seam's Testnet relay
   (`test/examples/ShieldedPaymentEscrowFork.t.sol`). `verify` costs 256,720 gas with the Groth16 check.
+- After an independent review on 31 October 2026:
+  - the example escrow adds `refundTo` for an opener who can't receive the token, refuses itself as a payee or a
+    destination, bounds its windows (`MAX_WINDOW`) and deadlines so nothing can overflow, and takes the work on top
+    of the anchor from `verify`; a fork test shows the real seal refuses a changed journal;
+  - `seam witness` checks that the server sent the transaction asked for; the CLI never overwrites a file it writes,
+    and keeps file contents out of its errors;
+  - `abi/IZcashPaymentVerifier.json`;
+  - PAYMENTS.md and INTEGRATING.md say what a payer must check before paying, who can prove today, what the light
+    wallet server learns, what has been proven so far, and why Testnet secures nothing.
 
 ## v0.2.0 (unreleased)
+
+- `scripts/relay-feed.sh` (after the same review): the network must read as one of the two Zcash ids, or the feeder
+  stops (a failed read used to feed a Mainnet relay from Testnet peers); a block locator follows a reorganisation at
+  any depth (it stepped back at most 20 blocks); every wait on a peer is bounded; a refused header no longer reverts
+  the round; one line per round, and a stop after an hour without progress; the RPC URL and, with a keystore, the key
+  stay off command lines and out of the log. `zcash_p2p_headers.py` takes `--locator`.
 
 - `config/relay-mainnet.json` sets NU7's Mainnet height to 3,543,405 (ZIP 259, Zebra 7.0.0) instead of `NEVER`, so a
   Mainnet relay deployed from it follows Mainnet across NU7. The test parameters, the Python reference and

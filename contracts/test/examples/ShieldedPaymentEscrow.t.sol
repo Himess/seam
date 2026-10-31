@@ -110,6 +110,12 @@ contract ShieldedPaymentEscrowTest is PaymentFixtures {
         escrow.open(t, AMOUNT, PAYEE, RECEIVER, 0, later);
         vm.expectRevert(ShieldedPaymentEscrow.InvalidOrder.selector);
         escrow.open(t, AMOUNT, PAYEE, RECEIVER, ZAT, uint64(block.timestamp));
+        // Tokens paid to the escrow itself would stay there; a deadline past uint64 less the grace would overflow.
+        vm.expectRevert(ShieldedPaymentEscrow.InvalidOrder.selector);
+        escrow.open(t, AMOUNT, address(escrow), RECEIVER, ZAT, later);
+        vm.expectRevert(ShieldedPaymentEscrow.InvalidOrder.selector);
+        escrow.open(t, AMOUNT, PAYEE, RECEIVER, ZAT, type(uint64).max - GRACE + 1);
+        escrow.open(t, AMOUNT, PAYEE, RECEIVER, ZAT, type(uint64).max - GRACE);
         vm.stopPrank();
 
         MockFeeToken fee = new MockFeeToken();
@@ -132,6 +138,13 @@ contract ShieldedPaymentEscrowTest is PaymentFixtures {
         new ShieldedPaymentEscrow(verifier, minWork, DEPTH, DELAY, 0);
         vm.expectRevert(ZcashFinalityGate.ZeroMinWork.selector);
         new ShieldedPaymentEscrow(verifier, 0, DEPTH, DELAY, GRACE);
+        uint64 tooLong = escrow.MAX_WINDOW() + 1;
+        vm.expectRevert(ShieldedPaymentEscrow.WindowTooLong.selector);
+        new ShieldedPaymentEscrow(verifier, minWork, DEPTH, tooLong, GRACE);
+        vm.expectRevert(ShieldedPaymentEscrow.WindowTooLong.selector);
+        new ShieldedPaymentEscrow(verifier, minWork, DEPTH, DELAY, tooLong);
+        vm.expectRevert(ShieldedPaymentEscrow.WindowTooLong.selector);
+        new ShieldedPaymentEscrow(verifier, minWork, uint64(type(uint32).max) + 1, DELAY, GRACE);
         assertEq(address(escrow.relay()), address(relay));
         assertEq(address(escrow.verifier()), address(verifier));
         assertEq(escrow.proveGrace(), GRACE);
@@ -193,9 +206,35 @@ contract ShieldedPaymentEscrowTest is PaymentFixtures {
         vm.expectRevert(ShieldedPaymentEscrow.InvalidOrder.selector);
         escrow.finalizeTo(orderId, address(0));
         vm.prank(PAYEE);
+        vm.expectRevert(ShieldedPaymentEscrow.InvalidOrder.selector);
+        escrow.finalizeTo(orderId, address(escrow));
+        vm.prank(PAYEE);
         escrow.finalizeTo(orderId, address(0xCAFE));
         assertEq(token.balanceOf(address(0xCAFE)), AMOUNT);
         assertEq(token.balanceOf(PAYEE), 0);
+    }
+
+    /// @notice Only the opener may take a refund elsewhere, for an opener that can't receive the token.
+    function test_refundTo_isTheOpeners() public {
+        (bytes32 orderId,) = _open();
+        uint64 last = escrow.lastProofTime(orderId);
+        vm.prank(OPENER);
+        vm.expectRevert(abi.encodeWithSelector(ShieldedPaymentEscrow.ProofWindowOpen.selector, orderId, last));
+        escrow.refundTo(orderId, address(0xCAFE));
+        vm.warp(last + 1);
+        vm.expectRevert(abi.encodeWithSelector(ShieldedPaymentEscrow.NotOpener.selector, orderId));
+        escrow.refundTo(orderId, address(this));
+        vm.startPrank(OPENER);
+        vm.expectRevert(ShieldedPaymentEscrow.InvalidOrder.selector);
+        escrow.refundTo(orderId, address(0));
+        vm.expectRevert(ShieldedPaymentEscrow.InvalidOrder.selector);
+        escrow.refundTo(orderId, address(escrow));
+        escrow.refundTo(orderId, address(0xCAFE));
+        vm.stopPrank();
+        assertEq(token.balanceOf(address(0xCAFE)), AMOUNT);
+        assertEq(uint8(escrow.order(orderId).status), uint8(ShieldedPaymentEscrow.Status.Refunded));
+        vm.expectRevert(abi.encodeWithSelector(ShieldedPaymentEscrow.OrderNotOpen.selector, orderId));
+        escrow.refund(orderId);
     }
 
     function test_prove_refusesAProofOfAnotherPayment() public {
@@ -334,7 +373,8 @@ contract ShieldedPaymentEscrowTest is PaymentFixtures {
     }
 
     /// @notice A new proof clears a stale pending settlement itself; a refund never does, so a drop always reopens the
-    ///         proof window first: a reorganisation after the deadline can't turn a payment made in time into a refund.
+    ///         proof window first: a reorganisation after the deadline doesn't by itself turn a payment made in time into
+    ///         a refund, as long as an anchor above the payment and before the deadline stays on the best chain.
     function test_aStaleSettlementAfterTheDeadlineReopensTheWindow() public {
         bytes32 a1 = _relayWithSyntheticBranch();
         (bytes32 orderId, bytes32 ref) = _open();

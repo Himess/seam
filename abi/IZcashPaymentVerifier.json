@@ -1,0 +1,183 @@
+[
+  {
+    "type": "function",
+    "name": "imageId",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "networkId",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "relay",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "riscZeroVerifier",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "selector",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes4",
+        "internalType": "bytes4"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "verify",
+    "inputs": [
+      {
+        "name": "journal",
+        "type": "bytes",
+        "internalType": "bytes"
+      },
+      {
+        "name": "seal",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "payment",
+        "type": "tuple",
+        "internalType": "struct ZcashPayment",
+        "components": [
+          {
+            "name": "branchId",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "anchor",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "paymentRef",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "receiverCommitment",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "zatoshi",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      },
+      {
+        "name": "anchorWork",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "error",
+    "name": "AnchorNotInBestChain",
+    "inputs": [
+      {
+        "name": "anchor",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "BranchNotAllowed",
+    "inputs": [
+      {
+        "name": "branchId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InvalidJournalLength",
+    "inputs": [
+      {
+        "name": "length",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "MalformedJournal",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "SelectorMismatch",
+    "inputs": [
+      {
+        "name": "selector",
+        "type": "bytes4",
+        "internalType": "bytes4"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "UnsupportedJournalVersion",
+    "inputs": [
+      {
+        "name": "version",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  }
+]

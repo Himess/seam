@@ -53,9 +53,10 @@ salt, in a file only its owner may read, and prints the commitment an app commit
 - **RISC Zero's proof system,** and the governance of the RISC Zero verifier router the verifier calls. The router's
   owner can add a verifier under a new selector or remove one, but never replace the verifier behind a selector
   (`RiscZeroVerifierRouter.addVerifier` refuses a selector in use or removed). The payment verifier pins the Groth16
-  selector it accepts, so a seal is checked by that one verifier or not at all. A removal would stop proofs from
-  verifying: a risk to liveness, not to safety. An app that pins the verifier then needs a new one, and its open orders
-  run towards their refund meanwhile, even those already paid.
+  selector it accepts, so a seal is checked by that one verifier or not at all. A removal, or the emergency stop RISC
+  Zero puts in front of each verifier (its guardian can trigger it at once), would stop proofs from verifying: a risk
+  to liveness, not to safety. An app that pins the verifier then needs a new one, and its open orders run towards
+  their refund meanwhile, even those already paid.
 - **The pinned image id.** It is the hash of the guest's ELF, built reproducibly in RISC Zero's Docker builder;
   anyone can rebuild it and compare.
 - **The relay.** The anchor must be on its best chain with enough work on top
@@ -137,15 +138,15 @@ published its reference. To keep that set large:
 
 ## 8. Cost
 
-Gas measured on 30 October 2026 with `forge test --match-test test_proveThenFinalizePaysThePayee --gas-report` (solc
+Gas measured on 31 October 2026 with `forge test --match-test test_proveThenFinalizePaysThePayee --gas-report` (solc
 0.8.28, optimizer 200 runs), with the MOCK router and the MOCK token: each figure is the call's own execution, with
 storage cold.
 
 | Call | Gas |
 |---|---|
 | `ZcashPaymentVerifier.verify`, without the Groth16 check | 20,710: 19,882 its own (the journal, the selector, the relay's best chain and work), 828 the MOCK router |
-| `ShieldedPaymentEscrow.open` | 225,746, with the token's transfer |
-| `ShieldedPaymentEscrow.prove` | 120,369, with the `verify` above |
+| `ShieldedPaymentEscrow.open` | 226,061, with the token's transfer |
+| `ShieldedPaymentEscrow.prove` | 118,243, with the `verify` above |
 | `ShieldedPaymentEscrow.finalize` | 97,216, with the token's transfer |
 
 The router's Groth16 check adds its own gas to `verify`. Measured on the real payment of 0.01 TAZ made on Zcash Testnet

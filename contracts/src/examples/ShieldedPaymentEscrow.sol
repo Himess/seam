@@ -19,9 +19,14 @@ import {ZcashFinalityGate} from "./ZcashFinalityGate.sol";
 ///      never costs a payer who paid in time. A refund waits for that window to close.
 ///
 ///      A proof starts a pending window: `finalizeDepth` more Zcash headers and `finalizeDelay` seconds, then the anchor
-///      must still be final. A pending settlement whose anchor left the best chain is dropped, by anyone, which reopens
-///      the proof window for `proveGrace`. Use a token without transfer fees: `open` refuses one that delivers less than
-///      `amount`. If transfers to the payee revert, the payee can take the tokens to another address (`finalizeTo`).
+///      must still be final. A pending settlement waits for the relay to move on: one that nobody feeds holds the order
+///      until someone does. A pending settlement whose anchor left the best chain is dropped, by anyone, which reopens
+///      the proof window for `proveGrace`. Use a token without transfer fees or rebasing: `open` refuses one that
+///      delivers less than `amount`, and a balance that shrinks later leaves the escrow short. If transfers to the payee
+///      or the opener revert, each can take the tokens to another address (`finalizeTo`, `refundTo`).
+///
+///      Payers: pay once the order's `open` is final on this chain (a reorganisation here can give the order another
+///      id, and so another `paymentRef`), and only after checking the receiver commitment (docs/PAYMENTS.md § 4).
 contract ShieldedPaymentEscrow is ZcashFinalityGate, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -60,6 +65,8 @@ contract ShieldedPaymentEscrow is ZcashFinalityGate, ReentrancyGuard {
     uint64 public immutable finalizeDelay;
     /// @notice Seconds to prove a payment made in time, after the deadline or after the last dropped settlement.
     uint64 public immutable proveGrace;
+    /// @notice The longest `finalizeDelay` and `proveGrace` this escrow accepts: windows stay far from overflowing.
+    uint64 public constant MAX_WINDOW = 365 days;
 
     mapping(bytes32 orderId => Order) private _orders;
     mapping(bytes32 orderId => Pending) private _pending;
@@ -78,13 +85,15 @@ contract ShieldedPaymentEscrow is ZcashFinalityGate, ReentrancyGuard {
     event SettlementPending(bytes32 indexed orderId, bytes32 anchor, uint64 readyHeight, uint64 readyTime);
     event SettlementDropped(bytes32 indexed orderId);
     event OrderSettled(bytes32 indexed orderId, address to);
-    event OrderRefunded(bytes32 indexed orderId);
+    event OrderRefunded(bytes32 indexed orderId, address to);
 
     error ZeroWindow();
+    error WindowTooLong();
     error InvalidOrder();
     error TransferMismatch(uint256 received, uint256 amount);
     error OrderNotOpen(bytes32 orderId);
     error NotPayee(bytes32 orderId);
+    error NotOpener(bytes32 orderId);
     error ProofWindowClosed(bytes32 orderId, uint64 lastProofTime);
     error ProofWindowOpen(bytes32 orderId, uint64 lastProofTime);
     error AnchorAfterDeadline(bytes32 anchor, uint256 anchorTime, uint64 deadline);
@@ -104,8 +113,9 @@ contract ShieldedPaymentEscrow is ZcashFinalityGate, ReentrancyGuard {
     ///        order whose receiver and salt the attacker knows. On a Testnet relay no value is safe at any minWork.
     /// @param finalizeDepth_ Headers of the pending window (Testnet example: 6).
     /// @param finalizeDelay_ Seconds of the pending window (Testnet example: 150).
-    /// @param proveGrace_ Seconds to prove a payment made in time (example: one day). Keep both windows short enough that
-    ///        a settlement can always finish: a pending settlement blocks its order's refund.
+    /// @param proveGrace_ Seconds to prove a payment made in time (example: one day): longer than `minWork` takes to pile
+    ///        up on an anchor, plus proving and a lagging relay. Keep both windows short enough that a settlement can
+    ///        always finish: a pending settlement blocks its order's refund. At most `MAX_WINDOW` each.
     constructor(
         IZcashPaymentVerifier verifier_,
         uint256 minWork_,
@@ -114,6 +124,9 @@ contract ShieldedPaymentEscrow is ZcashFinalityGate, ReentrancyGuard {
         uint64 proveGrace_
     ) ZcashFinalityGate(IZcashHeaderRelayReader(verifier_.relay()), verifier_.networkId(), minWork_) {
         if (finalizeDepth_ == 0 || finalizeDelay_ == 0 || proveGrace_ == 0) revert ZeroWindow();
+        if (finalizeDepth_ > type(uint32).max || finalizeDelay_ > MAX_WINDOW || proveGrace_ > MAX_WINDOW) {
+            revert WindowTooLong();
+        }
         verifier = verifier_;
         finalizeDepth = finalizeDepth_;
         finalizeDelay = finalizeDelay_;
@@ -132,10 +145,14 @@ contract ShieldedPaymentEscrow is ZcashFinalityGate, ReentrancyGuard {
         uint64 zatoshi,
         uint64 deadline
     ) external nonReentrant returns (bytes32 orderId, bytes32 paymentRef) {
-        if (amount == 0 || payee == address(0) || receiverCommitment == bytes32(0) || zatoshi == 0) {
+        if (
+            amount == 0 || payee == address(0) || payee == address(this) || receiverCommitment == bytes32(0)
+                || zatoshi == 0
+        ) {
             revert InvalidOrder();
         }
-        if (deadline <= block.timestamp) revert InvalidOrder();
+        // The proof window must end within a uint64.
+        if (deadline <= block.timestamp || deadline > type(uint64).max - proveGrace) revert InvalidOrder();
         orderId = keccak256(abi.encode(msg.sender, _nonce++, blockhash(block.number - 1)));
         paymentRef = paymentRefOf(orderId);
         _orders[orderId] = Order({
@@ -167,14 +184,15 @@ contract ShieldedPaymentEscrow is ZcashFinalityGate, ReentrancyGuard {
         uint64 last = lastProofTime(orderId);
         if (block.timestamp > last) revert ProofWindowClosed(orderId, last);
 
-        (ZcashPayment memory p,) = verifier.verify(journal, seal);
+        // `verify` checks that the anchor is on the relay's best chain, and returns the work on top of it.
+        (ZcashPayment memory p, uint256 anchorWork) = verifier.verify(journal, seal);
         if (p.paymentRef != paymentRefOf(orderId)) revert ReferenceMismatch(p.paymentRef);
         if (p.receiverCommitment != o.receiverCommitment) revert ReceiverMismatch(p.receiverCommitment);
         if (p.zatoshi < o.zatoshi) revert AmountTooLow(p.zatoshi, o.zatoshi);
         // The payment's block comes before the anchor, so an anchor no later than the deadline means a payment in time.
         uint256 anchorTime = relay.headerOf(p.anchor).time;
         if (anchorTime > o.deadline) revert AnchorAfterDeadline(p.anchor, anchorTime, o.deadline);
-        _requireFinal(p.anchor);
+        if (anchorWork < minWork) revert NotFinal(p.anchor, anchorWork, minWork);
 
         (, uint256 height,) = relay.bestChainTip();
         // Zcash heights and EVM timestamps fit a uint64 for the chains' lifetimes.
@@ -194,7 +212,7 @@ contract ShieldedPaymentEscrow is ZcashFinalityGate, ReentrancyGuard {
     /// @notice As `finalize`, to an address the payee chooses: for a payee that can't receive the token.
     function finalizeTo(bytes32 orderId, address to) external nonReentrant {
         if (msg.sender != _orders[orderId].payee) revert NotPayee(orderId);
-        if (to == address(0)) revert InvalidOrder();
+        if (to == address(0) || to == address(this)) revert InvalidOrder();
         _settle(orderId, to);
     }
 
@@ -208,20 +226,14 @@ contract ShieldedPaymentEscrow is ZcashFinalityGate, ReentrancyGuard {
 
     /// @notice Returns the tokens to the opener once the proof window has closed with nothing pending.
     function refund(bytes32 orderId) external nonReentrant {
-        Order storage o = _orders[orderId];
-        if (o.status != Status.Open) revert OrderNotOpen(orderId);
-        uint64 last = lastProofTime(orderId);
-        if (block.timestamp <= last) revert ProofWindowOpen(orderId, last);
-        bytes32 anchor = _pending[orderId].anchor;
-        if (anchor != bytes32(0)) {
-            // A proof made in time is resolved first: finalized if it stands; if it doesn't, `drop` reopens the window
-            // for the payer to prove again.
-            if (relay.isInBestChain(anchor)) revert SettlementIsPending(orderId);
-            revert SettlementIsStale(orderId);
-        }
-        o.status = Status.Refunded;
-        emit OrderRefunded(orderId);
-        o.token.safeTransfer(o.opener, o.amount);
+        _refund(orderId, _orders[orderId].opener);
+    }
+
+    /// @notice As `refund`, to an address the opener chooses: for an opener that can't receive the token.
+    function refundTo(bytes32 orderId, address to) external nonReentrant {
+        if (msg.sender != _orders[orderId].opener) revert NotOpener(orderId);
+        if (to == address(0) || to == address(this)) revert InvalidOrder();
+        _refund(orderId, to);
     }
 
     /// @notice The last time a proof is accepted: `proveGrace` after the deadline, or after the last dropped settlement.
@@ -242,6 +254,23 @@ contract ShieldedPaymentEscrow is ZcashFinalityGate, ReentrancyGuard {
 
     function pendingSettlement(bytes32 orderId) external view returns (Pending memory) {
         return _pending[orderId];
+    }
+
+    function _refund(bytes32 orderId, address to) internal {
+        Order storage o = _orders[orderId];
+        if (o.status != Status.Open) revert OrderNotOpen(orderId);
+        uint64 last = lastProofTime(orderId);
+        if (block.timestamp <= last) revert ProofWindowOpen(orderId, last);
+        bytes32 anchor = _pending[orderId].anchor;
+        if (anchor != bytes32(0)) {
+            // A proof made in time is resolved first: finalized if it stands; if it doesn't, `drop` reopens the window
+            // for the payer to prove again.
+            if (relay.isInBestChain(anchor)) revert SettlementIsPending(orderId);
+            revert SettlementIsStale(orderId);
+        }
+        o.status = Status.Refunded;
+        emit OrderRefunded(orderId, to);
+        o.token.safeTransfer(to, o.amount);
     }
 
     function _settle(bytes32 orderId, address to) internal {
