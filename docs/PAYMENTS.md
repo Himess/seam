@@ -102,6 +102,8 @@ key. So on Mainnet, for now, only the receiver can prove: an app whose payer mus
 
 Either one builds the witness locally with `seam witness`, from chain data any node or lightwalletd server serves.
 Proving runs on any machine with the witness; a witness should never leave a machine its owner doesn't control.
+`seam` refuses an environment that would hand the witness to Bonsai, RISC Zero's remote prover (`BONSAI_API_URL`, or
+`RISC0_PROVER=bonsai`), and is built so that `RISC0_DEV_MODE` can't fake a receipt.
 
 `seam witness` asks the light wallet server for the payment's transaction, by its id, and for its block: that server
 learns which payment is being proven, and from where. Use a server you run, or reach one over Tor, when that matters.

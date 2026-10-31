@@ -217,7 +217,12 @@ fn parity(guest: &Guest, input: &str) -> Result<()> {
         let elapsed = started.elapsed();
         let as_expected = k4::as_expected(m.expected, &real, &native);
         let same_zkvm = match (&native, &executed) {
-            (Err(e), Err(x)) => format!("{x:#}").contains(&format!("not a valid payment: {e:?}")),
+            // The guest's panic names the statement's error exactly: `Note` must not match `NoteCommitmentMismatch`.
+            (Err(e), Err(x)) => {
+                let (text, needle) = (format!("{x:#}"), format!("not a valid payment: {e:?}"));
+                text.match_indices(&needle)
+                    .any(|(at, _)| !text[at + needle.len()..].starts_with(|c: char| c.is_ascii_alphanumeric()))
+            }
             (Ok(j), Ok(session)) => session.journal.bytes == j.abi_encode(),
             _ => false,
         };
@@ -236,6 +241,21 @@ fn parity(guest: &Guest, input: &str) -> Result<()> {
     Ok(())
 }
 
+/// A witness never leaves this machine (docs/PAYMENTS.md § 5): risc0-zkvm's `default_prover` would hand it to Bonsai,
+/// RISC Zero's remote prover, when the environment asks for it, so such an environment is refused.
+fn refuse_remote_proving() -> Result<()> {
+    let prover = std::env::var("RISC0_PROVER").unwrap_or_default().to_lowercase();
+    ensure!(
+        matches!(prover.as_str(), "" | "local" | "ipc"),
+        "RISC0_PROVER={prover}: seam proves on this machine only (unset it, or local, or ipc)"
+    );
+    ensure!(
+        prover == "local" || prover == "ipc" || std::env::var_os("BONSAI_API_URL").is_none(),
+        "BONSAI_API_URL is set, which would send the witness to Bonsai: unset it, or set RISC0_PROVER=local or ipc"
+    );
+    Ok(())
+}
+
 pub fn run(command: ZkvmCommand) -> Result<()> {
     // One switch sets both (the `mainnet` feature): a guest of one network with the native statement of another would
     // check witnesses natively for another network than the guest proves.
@@ -244,6 +264,7 @@ pub fn run(command: ZkvmCommand) -> Result<()> {
         "the embedded guest proves on {GUEST_NETWORK}, the native statement on {}: build with or without `mainnet`",
         NETWORK.name
     );
+    refuse_remote_proving()?;
     let guest = Guest::load()?;
     match command {
         ZkvmCommand::ImageId => println!("0x{}", hex::encode(guest.image_id())),
