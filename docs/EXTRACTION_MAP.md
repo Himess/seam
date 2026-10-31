@@ -12,14 +12,14 @@ rest moves here. The last row lists what Seam never takes.
 | `scripts/relay-feed.sh`, `research/relay-synthetic-headers/` | same paths | v0.1.0; v0.2.0: the feeder follows a Mainnet relay with Mainnet peers |
 | (new) | `contracts/src/interfaces/`, `contracts/src/examples/`, `contracts/test/examples/`, `contracts/test/deployments/`, `abi/`, `docs/INTEGRATING.md`, `docs/RELAYING.md`, `contracts/deployments/seam-base-sepolia.relay*.json` | v0.1.0 |
 | (new) | `contracts/deployments/seam-base-sepolia-mainnet.relay*.json`, `CLAUDE.md` | v0.2.0 |
-| (new) | `docs/PAYMENTS.md`, `contracts/test/payment/`, `contracts/test/examples/ShieldedPaymentEscrow.t.sol`, `seam memo` | v0.3.0 |
-| `tier2/payment-statement`, `tier2/payment-k4`, the inclusion checks of `tier2/statement` | `crates/seam-payment` | v0.3.0, adapted: a text memo binding, a versioned journal, K4 in `k4.rs` |
-| `tier2/methods/payment`, `tier2/vendor/pasta_curves` | `zkvm/guest`, `zkvm/methods`, `zkvm/vendor/pasta_curves` | v0.3.0 |
-| `tier2/host` (payment parts) | `crates/seam-cli`, the `zkvm` feature | v0.3.0 |
-| `signer/crates/deposit-witness` (`history.rs`, `mmr.rs`, `p2p.rs`, `chain.rs`, `witness.rs`, `payment.rs`) | `crates/seam-chain` | v0.3.0 |
-| `signer/crates/zcash-ops` (`lwd.rs`, `scan.rs`, `spend.rs`), `swap/core/src/pay.rs` | `crates/seam-chain` (`lwd`, `scan`, `pay`) | v0.3.0 |
-| `signer/crates/deposit-witness/src/bin/build_payment_witness.rs` | `crates/seam-cli` (`seam witness`) | v0.3.0 |
-| `contracts/src/ZecuredSwap.sol` (payment path), `contracts/src/ZecuredVersions.sol` (pinning) | `contracts/src/payment/`, `contracts/src/examples/ShieldedPaymentEscrow.sol` | v0.3.0, rewritten |
+| (new) | `docs/PAYMENTS.md`, `contracts/test/payment/`, `contracts/test/examples/ShieldedPaymentEscrow.t.sol`, `seam memo` | v0.2.0 |
+| `tier2/payment-statement`, `tier2/payment-k4`, the inclusion checks of `tier2/statement` | `crates/seam-payment` | v0.2.0, adapted: a text memo binding, a versioned journal, K4 in `k4.rs` |
+| `tier2/methods/payment`, `tier2/vendor/pasta_curves` | `zkvm/guest`, `zkvm/methods`, `zkvm/vendor/pasta_curves` | v0.2.0 |
+| `tier2/host` (payment parts) | `crates/seam-cli`, the `zkvm` feature | v0.2.0 |
+| `signer/crates/deposit-witness` (`history.rs`, `mmr.rs`, `p2p.rs`, `chain.rs`, `witness.rs`, `payment.rs`) | `crates/seam-chain` | v0.2.0 |
+| `signer/crates/zcash-ops` (`lwd.rs`, `scan.rs`, `spend.rs`), `swap/core/src/pay.rs` | `crates/seam-chain` (`lwd`, `scan`, `pay`) | v0.2.0 |
+| `signer/crates/deposit-witness/src/bin/build_payment_witness.rs` | `crates/seam-cli` (`seam witness`) | v0.2.0 |
+| `contracts/src/ZecuredSwap.sol` (payment path), `contracts/src/ZecuredVersions.sol` (pinning) | `contracts/src/payment/`, `contracts/src/examples/ShieldedPaymentEscrow.sol` | v0.2.0, rewritten |
 | `bots/src/relayer.rs` | `crates/seam-relayer` | roadmap 2 |
 | `tools/leak-scan` | `tools/leak-scan` | later |
 | `zkvm/vendor/pasta_curves` | an upstream PR, or a separate patch crate | roadmap 4 |

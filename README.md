@@ -18,12 +18,13 @@ flowchart LR
     R -->|"confirmationWork, headerOf, …"| A["your contract"]
 ```
 
-**Status:** v0.1.0. Pre-release, testnets only, not audited.
+**Status:** v0.2.0. Pre-release, testnets only, not audited.
 - **Where it comes from:** extracted on 29 October 2026 from [Zecured](https://github.com/Himess/zecured), my ZECATHON
   2026 entry, with the relay's commit history.
 - **What's unchanged:** the relay's Solidity is byte-identical to Zecured at
   [`73de9f9`](https://github.com/Himess/zecured/tree/73de9f909e270e8aea10c2b221905f62a6a4c4df/contracts/src/relay).
-- **What's new:** the reader interface, the example, the docs and the deployment below.
+- **What's new:** a relay that follows Zcash Mainnet across NU7, and shielded payment proofs with a live verifier on
+  Base Sepolia that checks a real Testnet payment (below).
 
 ## Try it
 
@@ -48,6 +49,29 @@ cast call 0x527B6347d2392d17fa5Bd13DF88A43676501BE48 "bestChainTip()(bytes32,uin
 Anyone can feed them, and they check every header, so a feeder can delay a relay but can't make it accept a bad one.
 I feed both from a server of mine. If a tip lags, feed it yourself: [docs/RELAYING.md](docs/RELAYING.md).
 
+**A shielded payment, verified on Base.** A payment verifier on Base Sepolia,
+[`0x1701e16350A3F0E29DC45E75F356eAc9dAB8d5f9`](https://sepolia.basescan.org/address/0x1701e16350A3F0E29DC45E75F356eAc9dAB8d5f9#code), checks payment proofs against the Testnet
+relay and the pinned Testnet guest ([record](contracts/deployments/seam-base-sepolia.payment-verifier.json)). This is a
+real payment of 0.01 TAZ, made on Zcash Testnet on 30 October 2026, proven on 31 October:
+
+```sh
+F=contracts/test/examples/fixtures/testnet_real_payment.json
+cast call 0x1701e16350A3F0E29DC45E75F356eAc9dAB8d5f9 "verify(bytes,bytes)((uint32,bytes32,bytes32,bytes32,uint64),uint256)" \
+  $(jq -r .journal $F) $(jq -r .seal $F) --rpc-url https://sepolia.base.org
+```
+
+On 31 October 2026 it returned the payment and the work on top of its anchor (which only grows):
+
+```text
+(1998129881 [1.998e9], 0xcb3ded4678815d97036eb20299090a3054460a97eefc4d711f6cc487c2000000, 0x39458b5c2bea9b8e50aa1e413970a4710aa096b57bd98c977fb2d060f973cb9f, 0x94a35f10c1b6b65cbf8962a7bd68ee1e4920841b8d529a41b71b036335a08245, 1000000 [1e6])
+28346070714 [2.834e10]
+```
+
+That is the epoch (NU7's branch id), the anchor (Zcash Testnet block 4,557,390, in the relay's byte order), the
+reference the payment's memo names, the receiver commitment, the amount in zatoshi, and the work the relay holds on top
+of the anchor. A seal that isn't a proof of exactly this journal reverts. The transaction id, the note and the address
+appear nowhere on Base.
+
 ## Build on it
 
 ```solidity
@@ -60,7 +84,7 @@ bool isFinal = relay.confirmationWork(blockHash) >= minWork;
 ```
 
 ```sh
-forge install Himess/seam@v0.1.0    # remapping: seam/=lib/seam/contracts/src/
+forge install Himess/seam@v0.2.0    # remapping: seam/=lib/seam/contracts/src/
 ```
 
 Where to start:
@@ -93,6 +117,39 @@ put that id on a public chain; Seam's payment proofs exist to avoid that.
 
 Ideas and open questions are issues labelled [`idea`](https://github.com/Himess/seam/labels/idea). Building on Seam?
 Open an issue and say what you need.
+
+## Prove a shielded payment
+
+**What a proof shows:** that a shielded Ironwood payment of at least an amount went to the receiver an app committed
+to (`keccak256(salt32 || receiver43)`), with a memo naming the app's reference, in the chain history of a header the
+relay holds. **What it doesn't:** the payment's proof of work and Zcash's own validity proofs (the relay and the
+anchor's depth stand for them), that the payment was the only one, or anything private about the payer. The details:
+[docs/PAYMENTS.md](docs/PAYMENTS.md).
+
+**Who can prove today:**
+- **The receiver,** with its viewing key: `seam witness --ufvk-file`.
+- **The payer,** only after paying with `seam pay`, which keeps the note's opening. Ordinary wallets don't export it, and
+  `seam witness` can't yet recover a note with a payer's outgoing viewing key.
+
+**What proving takes:**
+- **An NVIDIA GPU:** on an RTX 4090 the real payment's proof took 43.1 s (the STARK) and 34.2 s (its Groth16 wrap, in
+  Docker on x86), 19.9 million cycles.
+- **Not a CPU:** in Zecured, a proof of the same size ran for 7 h 58 min on a 4-core server, and hadn't finished after
+  38 min on 15 cores.
+- **The pinned guest:** `SEAM_PAYMENT_ELF` set to the ELF the guests workflow (or `scripts/gpu-prove.sh guests`)
+  builds, whose image id is in [`zkvm/pinned-image-ids.txt`](zkvm/pinned-image-ids.txt).
+
+```sh
+cargo build --release -p seam-cli --features zkvm,cuda      # on Linux with the CUDA toolkit
+seam witness --ufvk-file <ufvk> --txid <txid> --salt-file <salt> --anchor <height> --out witness.json
+SEAM_PAYMENT_ELF=payment-test.bin seam seal witness.json seal.json
+```
+
+**What others learn:** the light wallet server `seam witness` asks learns which transaction and block you prove, and
+from where: use a server you run, or Tor. A witness holds the receiver and the salt: prove on a machine you control.
+
+**Testnet only for now.** The Mainnet guest is pinned but hasn't proven a real Mainnet payment yet; Mainnet payments come
+once it has, against real NU6.3 and NU7 history.
 
 ## What it checks
 
@@ -155,11 +212,12 @@ across the activation follow it.
 | `crates/seam-cli` | `seam`: `memo`, `commitment`, `pay` (Testnet), `witness`; with the `zkvm` feature, `execute`, `prove`, `groth16`, `seal`, `image-id`, `export-elf` and `parity`. |
 | `zkvm/` | The payment guest (its own workspace), the crate that embeds it, and the vendored `pasta_curves` with its zkVM patch ([note](zkvm/vendor/pasta_curves/SEAM_PATCH.md)). |
 | `contracts/config/` | Each network's consensus parameters, with their sources. |
-| `contracts/script/DeployRelay.s.sol` | Deploys a relay from a parameter file and a checkpoint. |
-| `contracts/deployments/` | Deployment records: Seam's two relays, and the relay of Zecured's live run on 27 October 2026. |
+| `contracts/script/DeployRelay.s.sol`, `DeployPaymentVerifier.s.sol` | Deploy a relay from a parameter file and a checkpoint, and a payment verifier for a relay. |
+| `contracts/deployments/` | Deployment records: Seam's two relays and its payment verifier, and the relay of Zecured's live run on 27 October 2026. |
 | `contracts/test/relay/` | **80 tests on real Testnet and Mainnet headers:**<br>• 30 headers across NU7's activation<br>• Equihash checked against the `equihash` crate Zebra uses, on 592 cases<br>• an independent Python implementation of the rules<br>• the P2P header tools |
-| `contracts/test/examples/`, `contracts/test/deployments/`, `contracts/test/payment/` | 42 tests of the reader, the examples, the payment verifier and Seam's two deployment records, two of them with a real payment's seal on a Base Sepolia fork. |
+| `contracts/test/examples/`, `contracts/test/deployments/`, `contracts/test/payment/` | 45 tests of the reader, the examples, the payment verifier and Seam's three deployment records; three check the real payment's seal, two of them on a Base Sepolia fork and one against the live verifier. |
 | `scripts/relay-feed.sh` | Feeds a relay from Zcash peers. |
+| `scripts/gpu-prove.sh` | Builds the guests and proves a payment on a rented NVIDIA machine. |
 | `abi/` | ABI JSON for TypeScript and other clients. |
 | `research/relay-synthetic-headers/` | The solver behind the synthetic test headers (genuine Equihash solutions at Testnet's minimum difficulty). |
 
@@ -173,9 +231,9 @@ cd seam/contracts
 forge test
 ```
 
-Six tests need an RPC URL and skip themselves without it:
+Seven tests need an RPC URL and skip themselves without it:
 - the Base mainnet gas measurement (`BASE_MAINNET_RPC_URL`);
-- the live checks of the two Seam relays (`BASE_SEPOLIA_RPC_URL`);
+- the live checks of the two Seam relays and of the payment verifier (`BASE_SEPOLIA_RPC_URL`);
 - the real payment's order, its seal and its settlement on a Base Sepolia fork (`BASE_SEPOLIA_RPC_URL`, from an RPC
   that serves the state of past blocks: the settlement forks blocks of 30 October 2026).
 
@@ -192,11 +250,11 @@ builder with `SEAM_DOCKER_GUESTS=1`, otherwise with the local risc0 toolchain. E
 and r0vm 3.0.6. The Docker build sends the whole repository to Docker but `target/` and `.git/`: build from a clean
 copy (`git archive`), with no `.env`, wallet or witness in it, as `scripts/gpu-prove.sh guests` does.
 
-To prove: `cargo build --release -p seam-cli --features zkvm` (with `cuda` on an NVIDIA GPU; `mainnet` for Mainnet),
-then `seam execute <witness.json>` (cycles), `seam prove <witness.json> <receipt>` and
-`seam groth16 <receipt> <seal.json>`, or `seam seal` for both. `SEAM_PAYMENT_ELF=<pinned ELF>` proves the pinned guest
-rather than the one this build embeds, whose image id depends on the machine unless built in Docker. The Groth16 wrap
-needs x86 and Docker. [`scripts/gpu-prove.sh`](scripts/gpu-prove.sh) does all of it on a rented GPU.
+The zkVM commands, with `--features zkvm` (and `cuda` on an NVIDIA GPU, `mainnet` for Mainnet): `seam execute
+<witness.json>` (cycles), `seam prove <witness.json> <receipt>` and `seam groth16 <receipt> <seal.json>`, or `seam seal`
+for both; `SEAM_PAYMENT_ELF=<pinned ELF>` proves the pinned guest rather than the one this build embeds, whose image id
+depends on the machine unless built in Docker. [`scripts/gpu-prove.sh`](scripts/gpu-prove.sh) does all of it on a
+rented GPU.
 
 **The statement's fixtures (TEST-ONLY).** Both are in `crates/seam-payment/tests/fixtures/`:
 - `TEST-ONLY_testnet_ironwood_tx.json` holds public chain data only: a real Ironwood-only transaction mined on Zcash
@@ -215,16 +273,15 @@ local chain (chain id 31337):
 
 ## Roadmap
 
-1. **Zcash Mainnet across NU7** (v0.2.0): the activation height, tests on real headers across it, and a Base Sepolia
-   relay that follows Mainnet.
-2. **A standalone relayer:** Zecured's Rust relayer, with lag alarms.
-3. **Shielded payment proofs** (v0.3.0):
-   - the statement and its RISC Zero guest;
-   - reproducible builds;
-   - a `ZcashPaymentVerifier`;
-   - a prover CLI;
-   - an example escrow.
-4. **v1.0:** a written spec, an open review round and a draft ZIP.
+Done in v0.2.0: a relay that follows Mainnet, set for NU7; shielded payment proofs (the statement, its pinned and
+reproducible guests, the verifier, the CLI, an example escrow), live on Base Sepolia. Next:
+1. **Mainnet across NU7** (around 6 November 2026): tests on real Mainnet headers across the activation.
+2. **Mainnet payments:** a real Mainnet payment proven against real NU6.3 and NU7 history, before a Mainnet verifier.
+3. **The payer proves:** recovering a payment with the payer's outgoing viewing key, so any wallet's payer can prove.
+4. **A standalone relayer:** Zecured's Rust relayer, with lag alarms.
+5. **v1.0:** a written spec, an open review round and a draft ZIP.
+
+The smaller open work is in the [issues](https://github.com/Himess/seam/issues).
 
 ## Where it comes from
 
