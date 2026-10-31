@@ -139,7 +139,8 @@ launchctl print gui/$(id -u)/com.example.seam-feeder | grep -E 'state|pid'
 launchctl bootout gui/$(id -u)/com.example.seam-feeder    # stop it
 ```
 
-Either way the feeder exits on an RPC error, and the service restarts it after a minute.
+Either way the feeder exits when a read of the relay fails three times in a row, or after an hour without progress,
+and the service restarts it after a minute.
 
 ## Deploy your own relay
 
