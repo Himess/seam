@@ -16,7 +16,8 @@
 - It reads the relay's `networkId()` and feeds a Mainnet relay from Mainnet peers. The id must be one of the two Zcash
   networks', or the feeder stops: a failed read used to feed a Mainnet relay from Testnet peers.
 - A block locator follows a reorganisation at any depth; it used to step back at most 20 blocks.
-- Every wait on a peer is bounded.
+- Every wait on a peer is bounded, and every read of the relay is retried twice over a transient RPC error before
+  the feeder stops.
 - A refused header no longer reverts the round.
 - It prints one line per round, and stops after an hour without progress.
 - The RPC URL stays off command lines and out of the log, and so does the key with a keystore.
