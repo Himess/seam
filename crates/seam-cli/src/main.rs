@@ -91,16 +91,26 @@ pub(crate) fn read_secret_text(path: &Path) -> Result<String> {
     std::fs::read_to_string(path).with_context(|| format!("read {}", path.display()))
 }
 
-/// Writes a file only its owner may read (on Unix; elsewhere the directory's permissions apply).
+/// Writes a new file only its owner may read (on Unix; elsewhere the directory's permissions apply). An existing file
+/// or link at `path` is never replaced: one output can't overwrite another, or a wallet's key.
 pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
     let mut options = OpenOptions::new();
-    options.write(true).create(true).truncate(true);
+    options.write(true).create_new(true);
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
     options
         .open(path)
         .and_then(|mut f| f.write_all(bytes))
-        .with_context(|| format!("write {}", path.display()))
+        .with_context(|| format!("write {} (a new file: an existing one is never replaced)", path.display()))
+}
+
+/// Warns when the light wallet server is reached without TLS, unless on this machine. Never prints the URL, which may
+/// carry an API key.
+pub(crate) fn warn_if_plaintext(url: &str) {
+    let local = ["http://localhost", "http://127.0.0.1", "http://[::1]"].iter().any(|p| url.starts_with(p));
+    if url.starts_with("http://") && !local {
+        eprintln!("warning: the light wallet server is reached without TLS: the network in between sees every request");
+    }
 }
 
 fn run(cli: Cli) -> Result<()> {

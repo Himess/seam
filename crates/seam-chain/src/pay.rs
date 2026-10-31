@@ -57,7 +57,7 @@ pub fn select_inputs<'a>(unspent: &[&'a ReceivedNote], amount: u64) -> Result<Ve
         if total >= amount.saturating_add(zip317_fee(inputs.len().max(1), 2)) {
             break;
         }
-        total += n.value();
+        total = total.saturating_add(n.value());
         inputs.push(*n);
     }
     ensure!(
@@ -94,12 +94,16 @@ pub fn build_payment<P: Parameters + Clone>(
 ) -> Result<UnsignedPayment> {
     ensure!(!inputs.is_empty(), "no notes to spend");
     ensure!(value > 0, "a payment of nothing");
-    let input_total: u64 = inputs.iter().map(|n| n.value()).sum();
+    let input_total = inputs
+        .iter()
+        .try_fold(0u64, |sum, n| sum.checked_add(n.value()))
+        .context("the notes' values overflow")?;
     let fee_without_change = zip317_fee(inputs.len(), 1);
     let fee_with_change = zip317_fee(inputs.len(), 2);
-    let (fee, change) = if input_total == value + fee_without_change {
+    let needed = |fee: u64| value.checked_add(fee).context("the payment's value overflows");
+    let (fee, change) = if input_total == needed(fee_without_change)? {
         (fee_without_change, 0)
-    } else if input_total > value + fee_with_change {
+    } else if input_total > needed(fee_with_change)? {
         (fee_with_change, input_total - value - fee_with_change)
     } else {
         bail!("insufficient funds: {input_total} zatoshi for a payment of {value} and a fee of {fee_with_change}");

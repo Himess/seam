@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, anyhow, bail, ensure};
 use clap::Args;
 use seam_chain::{
     history::{display_hash, sha256d},
@@ -33,7 +33,8 @@ pub struct WitnessArgs {
     /// relay holds with enough work on top (docs/PAYMENTS.md § 7).
     #[arg(long)]
     anchor: u32,
-    /// Where the witness is written (JSON). It holds the receiver and the salt: keep it on machines you control.
+    /// Where the witness is written (JSON), a new file. It holds the receiver and the salt: keep it on machines you
+    /// control.
     #[arg(long)]
     out: PathBuf,
     /// The paymentRef the payment's memo must name (hex); it also picks the payment when a viewing key finds several.
@@ -63,10 +64,14 @@ pub async fn run(args: WitnessArgs) -> Result<()> {
     let network = crate::network(args.network.as_deref())?;
     let salt = parse_ref(&read_secret_text(&args.salt_file)?).context("the salt file: 64 hex digits")?;
     let source = match (&args.opening, &args.ufvk_file) {
-        (Some(path), None) => Source::Opening(
-            serde_json::from_str(&read_secret_text(path)?)
-                .context("the opening file: {action_index, receiver, value, rseed}")?,
-        ),
+        // serde_json's message can quote the file's text: only its position is reported.
+        (Some(path), None) => Source::Opening(serde_json::from_str(&read_secret_text(path)?).map_err(|e| {
+            anyhow!(
+                "the opening file is not {{action_index, receiver, value, rseed}} (line {}, column {})",
+                e.line(),
+                e.column()
+            )
+        })?),
         (None, Some(path)) => Source::ViewingKey(ufvk_fvk(network, &read_secret_text(path)?)?),
         _ => bail!("give one of --opening and --ufvk-file"),
     };
@@ -74,15 +79,15 @@ pub async fn run(args: WitnessArgs) -> Result<()> {
         Source::Opening(o) => o.txid.clone(),
         Source::ViewingKey(_) => None,
     };
-    let txid = match (args.txid.as_deref(), recorded.as_deref()) {
+    let parse = |id: &str| TxId::from_hex(id.trim()).context("a txid: 64 hex digits, as block explorers show it");
+    let txid = match (args.txid.as_deref().map(parse).transpose()?, recorded.as_deref().map(parse).transpose()?) {
         (Some(given), Some(kept)) => {
-            ensure!(given.trim() == kept.trim(), "--txid is not the transaction the opening was kept for");
+            ensure!(given == kept, "--txid is not the transaction the opening was kept for");
             given
         }
         (Some(id), None) | (None, Some(id)) => id,
         (None, None) => bail!("give --txid: the opening does not name its transaction"),
     };
-    let txid = TxId::from_hex(txid.trim()).context("the txid: 64 hex digits, as block explorers show it")?;
     let payment_ref = args.payment_ref.as_deref().map(parse_ref).transpose().context("--payment-ref")?;
     let commitment = args.receiver_commitment.as_deref().map(parse_ref).transpose().context("--receiver-commitment")?;
     let epoch = network.epoch(args.anchor)?;
@@ -91,6 +96,7 @@ pub async fn run(args: WitnessArgs) -> Result<()> {
     let files = DataFiles::in_dir(&args.data_dir, network, epoch);
 
     let url = args.lwd.as_deref().unwrap_or(crate::default_lwd(network));
+    crate::warn_if_plaintext(url);
     let mut client = lwd::connect(url).await?;
     lwd::check_network(&mut client, network).await?;
     let mut peers = p2p::seed_peers(network);

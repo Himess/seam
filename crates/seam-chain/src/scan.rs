@@ -29,12 +29,18 @@ pub type IronwoodTree = CommitmentTree<MerkleHashOrchard, TREE_DEPTH>;
 /// A witness of one note in the Ironwood tree.
 pub type IronwoodWitness = IncrementalWitness<MerkleHashOrchard, TREE_DEPTH>;
 
-/// Where a note is in the chain, in chain order.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+/// Where a note is in the chain, in chain order. Its Debug output shows nothing: a note's block links it to its owner.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct NotePosition {
     pub height: u32,
     pub tx_index: u64,
     pub action_index: u32,
+}
+
+impl std::fmt::Debug for NotePosition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NotePosition").finish_non_exhaustive()
+    }
 }
 
 /// A note the wallet received.
@@ -199,7 +205,7 @@ impl ScanState {
 
     /// The sum of the unspent notes' values, in zatoshi.
     pub fn balance(&self) -> u64 {
-        self.unspent().iter().map(|n| n.value()).sum()
+        self.unspent().iter().fold(0u64, |sum, n| sum.saturating_add(n.value()))
     }
 }
 

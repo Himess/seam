@@ -72,8 +72,9 @@ impl Located {
     }
 }
 
-/// The public chain data a transaction is located with.
-#[derive(Clone, Debug)]
+/// The public chain data a transaction is located with. Its Debug output names the epoch alone: the transaction and
+/// its height would link a payment to whoever proves it.
+#[derive(Clone)]
 pub struct ChainData {
     /// The epoch of B and T, and the summaries of its blocks up to T - 1, oldest first.
     pub epoch: Epoch,
@@ -88,6 +89,12 @@ pub struct ChainData {
     pub tip_header: Vec<u8>,
     pub tip_txids: Vec<[u8; 32]>,
     pub tip_auth_commitments: Vec<[u8; 32]>,
+}
+
+impl std::fmt::Debug for ChainData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ChainData").field("epoch", &self.epoch).finish_non_exhaustive()
+    }
 }
 
 /// The transaction of `d` located under T, every part checked: B's header is the summarized block at its height and
@@ -222,7 +229,10 @@ pub async fn locate(
 ) -> Result<Located> {
     let epoch = network.epoch(tip)?;
     ensure!(tip > epoch.activation, "no block of the epoch is below the anchor");
+    let branch = BranchId::try_from(epoch.branch_id).map_err(|e| anyhow!("{e}"))?;
     let (raw_tx, height) = lwd::raw_transaction(client, txid).await?;
+    let asked = Transaction::read(&raw_tx[..], branch).context("the payment's transaction does not parse")?;
+    ensure!(asked.txid() == *txid, "the server sent another transaction than the one asked for");
     ensure!(height != 0, "the transaction is not mined yet");
     ensure!(height != u64::MAX, "the transaction is mined on a branch that is not the main chain");
     let height = u32::try_from(height)?;
@@ -282,7 +292,6 @@ pub async fn locate(
     let tip_block = lwd::compact_blocks(client, tip, tip).await?.remove(0);
     ensure!(tip_block.hash == header_hash(tip)?, "{}", stale());
     let tip_txids = tip_block.vtx.iter().map(|t| txid_bytes(&t.txid)).collect::<Result<Vec<_>>>()?;
-    let branch = BranchId::try_from(epoch.branch_id).map_err(|e| anyhow!("{e}"))?;
     let mut tip_auth_commitments = Vec::with_capacity(tip_txids.len());
     for t in &tip_txids {
         let (raw, _) = lwd::raw_transaction(client, &TxId::from_bytes(*t)).await?;

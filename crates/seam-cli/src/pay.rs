@@ -83,7 +83,10 @@ struct Wallet {
 }
 
 fn load_wallet(path: &std::path::Path) -> Result<Wallet> {
-    let f: WalletFile = serde_json::from_str(&read_secret_text(path)?).context("the wallet file")?;
+    // serde_json's message can quote the file's text, here a key: only its position is reported.
+    let f: WalletFile = serde_json::from_str(&read_secret_text(path)?).map_err(|e| {
+        anyhow!("the wallet file is not {{spending_key, birthday}} (line {}, column {})", e.line(), e.column())
+    })?;
     let bytes: [u8; 32] = hex::decode(f.spending_key.trim())
         .ok()
         .and_then(|b| b.try_into().ok())
@@ -101,6 +104,7 @@ pub fn run(args: PayArgs) -> Result<()> {
     ensure!(network == ZcashNetwork::Testnet, "seam pay pays on Testnet only, from a disposable wallet");
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().context("start a runtime")?;
     let url = args.lwd.as_deref().unwrap_or(crate::default_lwd(network));
+    crate::warn_if_plaintext(url);
     let connect = || async {
         let mut client = lwd::connect(url).await?;
         lwd::check_network(&mut client, network).await?;

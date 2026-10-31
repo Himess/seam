@@ -215,7 +215,10 @@ impl Peer {
                     // version, services, timestamp, two addresses and the nonce come first: 80 bytes.
                     let (len, pos) = read_varint(&body, 80)?;
                     let end = pos.checked_add(usize::try_from(len)?).context("a truncated version message")?;
-                    let height = body.get(end..end + 4).context("a truncated version message")?;
+                    let height = end
+                        .checked_add(4)
+                        .and_then(|after| body.get(end..after))
+                        .context("a truncated version message")?;
                     self.start_height = u32::try_from(i32::from_le_bytes(height.try_into()?)).unwrap_or(0);
                     version = true;
                     self.send("verack", &[])?;
