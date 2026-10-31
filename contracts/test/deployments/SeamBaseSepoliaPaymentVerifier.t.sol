@@ -57,6 +57,20 @@ contract SeamBaseSepoliaPaymentVerifierTest is Test {
         script.branchIds(keccak256("zcash-regtest"));
     }
 
+    /// @notice Every deployment names its record, and none overwrites another's.
+    function test_recordPath() public {
+        DeployPaymentVerifier script = new DeployPaymentVerifier();
+        assertEq(script.recordPath("anvil"), "deployments/anvil.payment-verifier.json");
+        vm.expectRevert(bytes("DeployPaymentVerifier: set DEPLOYMENT_NAME"));
+        script.recordPath("");
+        vm.expectRevert(
+            bytes(
+                "DeployPaymentVerifier: deployments/seam-base-sepolia.payment-verifier.json exists: choose another DEPLOYMENT_NAME"
+            )
+        );
+        script.recordPath("seam-base-sepolia");
+    }
+
     /// @notice The recorded verifier verifies the real Testnet payment's seal through RISC Zero's router (skipped
     ///         without `BASE_SEPOLIA_RPC_URL`).
     function test_live_recordedVerifierVerifiesTheRealPayment() public {

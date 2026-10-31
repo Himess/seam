@@ -1,18 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {Script} from "forge-std/Script.sol";
+import {Script, console} from "forge-std/Script.sol";
+import {VmSafe} from "forge-std/Vm.sol";
 import {ZCASH_MAINNET, ZCASH_TESTNET} from "../src/relay/IZcashHeaderRelay.sol";
 import {IZcashHeaderRelayReader} from "../src/interfaces/IZcashHeaderRelayReader.sol";
 import {IRiscZeroVerifier} from "../src/payment/IRiscZeroVerifier.sol";
 import {ZcashPaymentVerifier} from "../src/payment/ZcashPaymentVerifier.sol";
 
 /// @title DeployPaymentVerifier
-/// @notice Deploys a ZcashPaymentVerifier for a Seam relay and writes deployments/<name>.payment-verifier.json.
+/// @notice Deploys a ZcashPaymentVerifier for a Seam relay and, when it broadcasts, writes its record,
+///         deployments/<name>.payment-verifier.json.
 /// @dev Environment: DEPLOYER_PRIVATE_KEY (never logged); PAYMENT_RELAY (the relay, whose `networkId()` names the
 ///      network); RISC0_ROUTER and GROTH16_SELECTOR (RISC Zero's verifier router on this chain and the selector of its
 ///      Groth16 verifier); PAYMENT_IMAGE_ID (that network's guest in zkvm/pinned-image-ids.txt); DEPLOYMENT_NAME,
-///      required. The branch ids it allows follow the network: NU7's on Testnet, NU6.3's and NU7's on Mainnet.
+///      required, whose record must not exist yet. The branch ids it allows follow the network: NU7's on Testnet,
+///      NU6.3's and NU7's on Mainnet.
 ///        PAYMENT_RELAY=<relay> RISC0_ROUTER=<router> GROTH16_SELECTOR=<selector> PAYMENT_IMAGE_ID=<image id> \
 ///          DEPLOYMENT_NAME=<name> forge script script/DeployPaymentVerifier.s.sol --rpc-url <rpc> --broadcast
 contract DeployPaymentVerifier is Script {
@@ -24,8 +27,7 @@ contract DeployPaymentVerifier is Script {
         address router = vm.envAddress("RISC0_ROUTER");
         bytes4 selector = bytes4(vm.envBytes("GROTH16_SELECTOR"));
         bytes32 imageId = vm.envBytes32("PAYMENT_IMAGE_ID");
-        string memory name = vm.envString("DEPLOYMENT_NAME");
-        require(bytes(name).length != 0, "DeployPaymentVerifier: set DEPLOYMENT_NAME");
+        string memory record = recordPath(vm.envOr("DEPLOYMENT_NAME", string("")));
         bytes32 networkId = relay.networkId();
         uint32[] memory branches = branchIds(networkId);
 
@@ -46,7 +48,22 @@ contract DeployPaymentVerifier is Script {
         vm.serializeBytes32(out, "networkId", networkId);
         vm.serializeUint(out, "branchIds", recorded);
         out = vm.serializeUint(out, "chainId", block.chainid);
-        vm.writeJson(out, string.concat("deployments/", name, ".payment-verifier.json"));
+        if (vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) {
+            vm.writeJson(out, record);
+            console.log("record:", record);
+        } else {
+            console.log("not broadcast: no record written");
+        }
+    }
+
+    /// @notice The deployment's record, deployments/<name>.payment-verifier.json, for `name` (DEPLOYMENT_NAME). A name
+    ///         whose record exists is refused, so that no deployment overwrites another's record.
+    function recordPath(string memory name) public view returns (string memory path) {
+        require(bytes(name).length != 0, "DeployPaymentVerifier: set DEPLOYMENT_NAME");
+        path = string.concat("deployments/", name, ".payment-verifier.json");
+        require(
+            !vm.exists(path), string.concat("DeployPaymentVerifier: ", path, " exists: choose another DEPLOYMENT_NAME")
+        );
     }
 
     /// @notice The branch ids a verifier of `networkId`'s guest allows: the epochs that guest proves.

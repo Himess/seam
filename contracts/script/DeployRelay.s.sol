@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
-import {ZCASH_TESTNET} from "../src/relay/IZcashHeaderRelay.sol";
+import {VmSafe} from "forge-std/Vm.sol";
 import {ZcashHeaderRelay} from "../src/relay/ZcashHeaderRelay.sol";
 
 /// @title DeployRelay
@@ -13,9 +13,9 @@ import {ZcashHeaderRelay} from "../src/relay/ZcashHeaderRelay.sol";
 ///         (scripts/relay-feed.sh).
 /// @dev Environment: DEPLOYER_PRIVATE_KEY (never logged); RELAY_CHECKPOINT (path of the checkpoint file, readable
 ///      under fs_permissions); optional RELAY_NETWORK (`testnet`, the default, or `mainnet`: config/relay-<network>.json)
-///      or RELAY_CONFIG (the path of another parameter file); DEPLOYMENT_NAME: writes deployments/<name>.relay.json,
-///      required, so that no deployment overwrites another's record. A checkpoint file that names its network must name
-///      the configuration's.
+///      or RELAY_CONFIG (the path of another parameter file); DEPLOYMENT_NAME, required: the record,
+///      deployments/<name>.relay.json, which only a broadcast writes and none overwrites (see `recordPath`). A checkpoint
+///      file that names its network must name the configuration's.
 ///      The relay does not depend on the Base chain it runs on, so no chain id is checked; the output records it.
 ///        RELAY_CHECKPOINT=<testnet checkpoint> DEPLOYMENT_NAME=my-testnet-relay \
 ///          forge script script/DeployRelay.s.sol --rpc-url <rpc> --broadcast
@@ -37,7 +37,7 @@ contract DeployRelay is Script {
             loadParams(configPath);
         checkNu7ActivationHeight(p.nu7ActivationHeight);
         Checkpoint memory cp = loadCheckpoint(vm.envString("RELAY_CHECKPOINT"), displayName);
-        string memory name = deploymentName(p.networkId, vm.envOr("DEPLOYMENT_NAME", string("")));
+        string memory record = recordPath(vm.envOr("DEPLOYMENT_NAME", string("")));
 
         vm.startBroadcast(vm.envUint("DEPLOYER_PRIVATE_KEY"));
         relay = new ZcashHeaderRelay(p, cp.hash, cp.height, cp.times, cp.bits);
@@ -60,14 +60,21 @@ contract DeployRelay is Script {
         vm.serializeString(out, "parameters", configPath);
         vm.serializeUint(out, "nu7ActivationHeight", p.nu7ActivationHeight);
         out = vm.serializeUint(out, "chainId", block.chainid);
-        vm.writeJson(out, string.concat("deployments/", name, ".relay.json"));
+        if (vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) {
+            vm.writeJson(out, record);
+            console.log("record:", record);
+        } else {
+            console.log("not broadcast: no record written");
+        }
     }
 
-    /// @notice The name of the deployment record (deployments/<name>.relay.json): `requested` (DEPLOYMENT_NAME), which
-    ///         every deployment sets, so that none overwrites another's record (`base-sepolia` is Zecured's live run).
-    function deploymentName(bytes32, string memory requested) public pure returns (string memory) {
-        require(bytes(requested).length != 0, "DeployRelay: set DEPLOYMENT_NAME");
-        return requested;
+    /// @notice The deployment's record, deployments/<name>.relay.json, for `name` (DEPLOYMENT_NAME), which every
+    ///         deployment sets. A name whose record exists is refused, so that no deployment overwrites another's
+    ///         record (`base-sepolia` is Zecured's live run, `seam-base-sepolia*` are Seam's relays).
+    function recordPath(string memory name) public view returns (string memory path) {
+        require(bytes(name).length != 0, "DeployRelay: set DEPLOYMENT_NAME");
+        path = string.concat("deployments/", name, ".relay.json");
+        require(!vm.exists(path), string.concat("DeployRelay: ", path, " exists: choose another DEPLOYMENT_NAME"));
     }
 
     /// @notice ZIP 259 requires the NU7 activation height to be a multiple of 3 (ZIP 214 revision 3): catches a

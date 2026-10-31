@@ -255,10 +255,10 @@ python3 -I zcash_header_check.py chain mainnet.jsonl --network mainnet --equihas
 
 `script/DeployRelay.s.sol` reads the network's parameters from `config/relay-<network>.json` (`RELAY_NETWORK`,
 default `testnet`, or any file through `RELAY_CONFIG`) and the checkpoint from `RELAY_CHECKPOINT`, a file in the
-fixture format whose `network` must match the configuration's. It writes `deployments/<name>.relay.json`, in a
-simulation too (with a simulated address). **Always set `DEPLOYMENT_NAME`:** a Testnet relay's record otherwise defaults
-to `deployments/base-sepolia.relay.json`, the record of Zecured's live run below, and any other network needs a name.
-The script refuses an NU7 height that is not a multiple of 3 (ZIP 259) and warns when it is `NEVER`.
+fixture format whose `network` must match the configuration's. `DEPLOYMENT_NAME` is required: a broadcast writes the
+record, `deployments/<name>.relay.json` (a simulation writes none), and the script refuses a name whose record exists,
+such as `base-sepolia`, the record of Zecured's live run below. It refuses an NU7 height that is not a multiple of 3
+(ZIP 259) and warns when it is `NEVER`.
 
 Three relays are recorded on Base Sepolia:
 
