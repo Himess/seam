@@ -25,17 +25,24 @@ scripts/relay-feed.sh <relay address>           # keeps following; waits 25 s wh
 
 How the feeder works:
 - **Each batch:** it reads the relay's tip and fetches the next headers over the P2P protocol from public peers of the
-  relay's network: Mainnet if `networkId()` is `keccak256("zcash-mainnet")`, Testnet otherwise.
-  The fetch is read-only: [`zcash_p2p_headers.py`](../contracts/test/relay/tools/zcash_p2p_headers.py). It then drops
-  the headers the relay already has and submits the rest in one transaction.
-- **On a Zcash reorganisation:** if the peers no longer continue from the relay's tip, it steps back up to 20 blocks;
-  the relay switches branches by work.
-- **Output:** it prints the relay's tip after each batch. Peer addresses stay in a temporary directory, and every URL
-  in an error is replaced, since an RPC URL can carry a key.
-- **Batch size:** use `RELAY_BATCH=8`. Batches of 4 to 8 headers are the cheapest per header: 597,000 gas at 4 and
-  645,000 at 16, where memory grows
+  relay's network: Mainnet if `networkId()` is `keccak256("zcash-mainnet")`, Testnet if `keccak256("zcash-testnet")`;
+  anything else, or a read that fails, stops it. The fetch is read-only:
+  [`zcash_p2p_headers.py`](../contracts/test/relay/tools/zcash_p2p_headers.py), with every wait on a peer bounded. It
+  then drops the headers the relay already has and submits the rest in one transaction. If the relay refuses one
+  header, the batch reverts before it is sent; the feeder then submits one header at a time, up to the refused one.
+- **On a Zcash reorganisation:** if the peers no longer continue from the relay's tip, it asks them with a block
+  locator of the relay's best chain (its tip, the nine blocks below, then twice as far back at each step, down to the
+  checkpoint) and feeds their chain from where it leaves the relay's, until the relay switches branches by work: at
+  any depth.
+- **Output:** one line per round: the relay's tip, the headers fetched, new and submitted. Peer addresses stay in a
+  temporary directory, and every URL in an error is replaced, since an RPC URL can carry a key; cast reads the RPC URL
+  from the environment, never from a command line. An hour without progress stops the feeder, so that the service
+  manager restarts it in the open.
+- **Batch size:** `RELAY_BATCH`, 1 to 16, default 8. Batches of 4 to 8 headers are the cheapest per header: 597,000
+  gas at 4 and 645,000 at 16, where memory grows
   ([Zecured's MAINNET.md](https://github.com/Himess/zecured/blob/73de9f909e270e8aea10c2b221905f62a6a4c4df/docs/MAINNET.md#3-a-mainnet-deployment)).
   Once the relay has caught up, each batch holds the headers that arrived since the last one.
+- **Settings:** the repository root's `.env` fills what the environment leaves unset, and exports nothing.
 
 ## Cost
 

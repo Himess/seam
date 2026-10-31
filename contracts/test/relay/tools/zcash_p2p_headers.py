@@ -9,11 +9,19 @@ Every header is checked before it is written:
     Equihash (200, 9) solution, followed by a zero transaction count;
   * the block hash is recomputed here as SHA256d(header) (internal byte order);
   * each header's hashPrevBlock must equal the hash of the header before it (the first one must
-    equal the locator hash that was asked for).
+    equal one of the locator hashes that were asked for).
 
 Usage:
   python3 -I zcash_p2p_headers.py --from-hash <display hash of block h-1> --from-height <h-1> \
       --count N --out headers.jsonl [--network mainnet] [--peer HOST:PORT ...]
+  python3 -I zcash_p2p_headers.py --locator <height:display hash>,... --count N --out headers.jsonl ...
+
+A locator lists blocks newest first, as a node's block locator: a peer continues from the newest of them
+on its best chain, so one request finds where a chain the peers left rejoins theirs, at any depth.
+
+Every wait on a peer is bounded (the handshake, each reply, the whole run), so a slow or silent peer
+costs a timeout, never a hang. Exit status: 0 with the headers written (none at the peers' tip), 3 when
+the peers continue from none of the locator's blocks, 1 when no peer answered in time.
 
 Mainnet: on 2026-10-15 only Zakura peers answered `getheaders`; the Zebra peers closed the connection on
 it, so the tool may go through many peers before one serves the headers.
@@ -60,6 +68,17 @@ NETWORKS = {
 HEADER_PREFIX_LEN = 140
 SOLUTION_LEN = 1344
 HEADER_LEN = HEADER_PREFIX_LEN + 3 + SOLUTION_LEN  # 1487
+# The protocol's largest message (2 MiB); a `headers` reply of 160 headers is about 238 KB.
+MAX_MESSAGE = 2 * 1024 * 1024
+# Seconds: any single wait on a peer, its handshake, and its answer to `getheaders`.
+PEER_TIMEOUT = 20
+HANDSHAKE_DEADLINE = 30
+HEADERS_DEADLINE = 60
+
+
+def printable(text: str) -> str:
+    """A peer-chosen string (its user agent) as printable ASCII, at most 64 characters."""
+    return "".join(c if " " <= c <= "~" else "?" for c in text)[:64]
 
 
 def sha256d(data: bytes) -> bytes:
@@ -98,10 +117,9 @@ def net_addr(ip: str = "0.0.0.0", port: int = 0) -> bytes:
 
 
 class Peer:
-    def __init__(self, host: str, port: int, magic: bytes, protocol: int, timeout: float = 20.0):
+    def __init__(self, host: str, port: int, magic: bytes, protocol: int):
         self.host, self.port, self.magic, self.protocol = host, port, magic, protocol
-        self.sock = socket.create_connection((host, port), timeout=timeout)
-        self.sock.settimeout(timeout)
+        self.sock = socket.create_connection((host, port), timeout=PEER_TIMEOUT)
         self.buf = b""
         self.remote_version = None
         self.remote_agent = None
@@ -109,13 +127,14 @@ class Peer:
     def send(self, command: str, payload: bytes = b"") -> None:
         self.sock.sendall(message(self.magic, command, payload))
 
-    def recv_message(self):
+    def recv_message(self, deadline: float):
+        """The next message, by `deadline` (time.monotonic()) at the latest."""
         while True:
             if len(self.buf) >= 24:
                 if self.buf[:4] != self.magic:
                     raise RuntimeError("bad network magic from peer")
                 length = struct.unpack_from("<I", self.buf, 16)[0]
-                if length > 8_000_000:
+                if length > MAX_MESSAGE:
                     raise RuntimeError("oversized message")
                 if len(self.buf) >= 24 + length:
                     command = self.buf[4:16].rstrip(b"\x00").decode("ascii", "replace")
@@ -125,6 +144,10 @@ class Peer:
                     if sha256d(payload)[:4] != checksum:
                         raise RuntimeError("bad message checksum")
                     return command, payload
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError("the peer is too slow")
+            self.sock.settimeout(min(PEER_TIMEOUT, remaining))
             chunk = self.sock.recv(1 << 16)
             if not chunk:
                 raise RuntimeError("peer closed the connection")
@@ -142,13 +165,14 @@ class Peer:
             + b"\x00"  # relay = false
         )
         self.send("version", payload)
+        deadline = time.monotonic() + HANDSHAKE_DEADLINE
         got_version = got_verack = False
         while not (got_version and got_verack):
-            command, body = self.recv_message()
+            command, body = self.recv_message(deadline)
             if command == "version":
                 self.remote_version = struct.unpack_from("<i", body, 0)[0]
                 agent_len, pos = read_varint(body, 80)
-                self.remote_agent = body[pos : pos + agent_len].decode("ascii", "replace")
+                self.remote_agent = printable(body[pos : pos + agent_len].decode("ascii", "replace"))
                 got_version = True
                 self.send("verack")
             elif command == "verack":
@@ -164,17 +188,17 @@ class Peer:
         except OSError:
             return False
 
-    def get_headers(self, locator_internal: bytes):
-        payload = struct.pack("<I", self.protocol) + varint(1) + locator_internal + b"\x00" * 32
+    def get_headers(self, locator: list):
+        """The headers after the newest of `locator`'s hashes (internal order, newest first) on the peer's chain."""
+        payload = struct.pack("<I", self.protocol) + varint(len(locator)) + b"".join(locator) + b"\x00" * 32
         self.send("getheaders", payload)
-        deadline = time.time() + 60
-        while time.time() < deadline:
-            command, body = self.recv_message()
+        deadline = time.monotonic() + HEADERS_DEADLINE
+        while True:
+            command, body = self.recv_message(deadline)
             if command == "ping":
                 self.send("pong", body)
             elif command == "headers":
                 return parse_headers(body)
-        raise RuntimeError("no headers reply")
 
 
 def parse_headers(body: bytes):
@@ -222,28 +246,47 @@ def candidate_peers(explicit, network):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--from-hash", required=True, help="display-order hash of the block BEFORE the first one wanted")
-    ap.add_argument("--from-height", required=True, type=int, help="height of that block")
+    ap.add_argument("--from-hash", help="display-order hash of the block BEFORE the first one wanted")
+    ap.add_argument("--from-height", type=int, help="height of that block")
+    ap.add_argument("--locator", help="HEIGHT:HASH,... (display order, newest first), instead of --from-hash")
     ap.add_argument("--count", required=True, type=int)
     ap.add_argument("--out", required=True)
     ap.add_argument("--network", choices=sorted(NETWORKS), default="testnet")
     ap.add_argument("--peer", action="append", help="HOST:PORT (repeatable); default: the network's DNS seeders")
+    ap.add_argument("--deadline", type=float, default=240, help="seconds for the whole run (default 240)")
     args = ap.parse_args()
     network = NETWORKS[args.network]
 
-    locator = bytes.fromhex(args.from_hash)[::-1]
-    height = args.from_height
+    if args.locator:
+        entries = [(int(h), bytes.fromhex(x)[::-1]) for h, _, x in (i.partition(":") for i in args.locator.split(","))]
+    elif args.from_hash is not None and args.from_height is not None:
+        entries = [(args.from_height, bytes.fromhex(args.from_hash)[::-1])]
+    else:
+        ap.error("give --locator, or --from-hash and --from-height")
+    if any(len(h) != 32 for _, h in entries):
+        ap.error("a locator hash is not 32 bytes")
+    height_of = {h: height for height, h in entries}
+    locator = [h for _, h in entries]
+
+    run_deadline = time.monotonic() + args.deadline
+    prev = None  # the hash the next header must follow, once a peer has chosen where to continue from
+    height = None
     fetched = []
     peers = candidate_peers(args.peer, network)
     peer = None
     used = []
+    elsewhere = 0  # peers that continued from none of the locator's blocks
+    done = False  # a peer had no headers after ours: its tip
     while len(fetched) < args.count:
+        if time.monotonic() > run_deadline:
+            print("out of time", file=sys.stderr)
+            break
         if peer is None:
             try:
                 host, port = next(peers)
             except StopIteration:
                 print("ran out of peers", file=sys.stderr)
-                return 1
+                break
             try:
                 peer = Peer(host, port, network["magic"], network["protocol"])
                 peer.handshake()
@@ -254,36 +297,41 @@ def main() -> int:
                 peer = None
                 continue
         try:
-            raws = peer.get_headers(locator)
+            raws = peer.get_headers([prev] if prev is not None else locator)
         except Exception as exc:  # noqa: BLE001
             print(f"getheaders failed on {peer.host}: {exc}", file=sys.stderr)
             peer = None
             continue
         if not raws:
             print("peer returned no headers (tip reached?)", file=sys.stderr)
+            done = True
             break
-        if raws[0][4:36] != locator:
-            # The peer did not continue from our locator (e.g. it does not know that block yet).
-            print(
-                f"peer {peer.host} answered from prev={raws[0][4:36][::-1].hex()} instead of "
-                f"{locator[::-1].hex()}; trying another peer",
-                file=sys.stderr,
-            )
+        first = raws[0][4:36]
+        if prev is None and first in height_of:
+            prev, height = first, height_of[first]
+        if first != prev:
+            # The peer did not continue from our blocks (e.g. it does not know them, or not on its best chain).
+            elsewhere += prev is None
+            print(f"peer {peer.host} answered from prev={first[::-1].hex()}, not ours; trying another", file=sys.stderr)
             peer = None
             continue
         if described not in used:
             used.append(described)  # only peers whose headers were kept
         for raw in raws:
-            if raw[4:36] != locator:
-                raise SystemExit(f"linkage error at height {height + 1}")
+            if raw[4:36] != prev:
+                print(f"peer {peer.host}: unlinked headers at height {height + 1}; trying another", file=sys.stderr)
+                peer = None
+                break
             block_hash = sha256d(raw)
             height += 1
             fetched.append({"height": height, "hash": block_hash[::-1].hex(), "raw": raw.hex()})
-            locator = block_hash
+            prev = block_hash
             if len(fetched) >= args.count:
                 break
         print(f"{len(fetched)}/{args.count} headers (last height {height})", file=sys.stderr)
 
+    if not (fetched or done):
+        return 3 if elsewhere else 1
     with open(args.out, "w") as f:
         for item in fetched:
             f.write(json.dumps(item) + "\n")
