@@ -20,7 +20,7 @@ rest moves here. The last row lists what Seam never takes.
 | `signer/crates/zcash-ops` (`lwd.rs`, `scan.rs`, `spend.rs`), `swap/core/src/pay.rs` | `crates/seam-chain` (`lwd`, `scan`, `pay`) | v0.2.0 |
 | `signer/crates/deposit-witness/src/bin/build_payment_witness.rs` | `crates/seam-cli` (`seam witness`) | v0.2.0 |
 | `contracts/src/ZecuredSwap.sol` (payment path), `contracts/src/ZecuredVersions.sol` (pinning) | `contracts/src/payment/`, `contracts/src/examples/ShieldedPaymentEscrow.sol` | v0.2.0, rewritten |
-| `bots/src/relayer.rs` | `crates/seam-relayer` | roadmap 2 |
+| `bots/src/relayer.rs` | `crates/seam-relayer` | roadmap 4 |
 | `tools/leak-scan` | `tools/leak-scan` | later |
-| `zkvm/vendor/pasta_curves` | an upstream PR, or a separate patch crate | roadmap 4 |
+| `zkvm/vendor/pasta_curves` | an upstream PR, or a separate patch crate | later |
 | Stays in Zecured | FROST signers and vaults, Registry, Intake, zZEC, bonds, slasher, compensator, price feed, paymaster, app and site, the deposit and violation statements | — |
