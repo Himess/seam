@@ -14,10 +14,10 @@ import {ZcashHeaderRelay} from "../src/relay/ZcashHeaderRelay.sol";
 /// @dev Environment: DEPLOYER_PRIVATE_KEY (never logged); RELAY_CHECKPOINT (path of the checkpoint file, readable
 ///      under fs_permissions); optional RELAY_NETWORK (`testnet`, the default, or `mainnet`: config/relay-<network>.json)
 ///      or RELAY_CONFIG (the path of another parameter file); DEPLOYMENT_NAME: writes deployments/<name>.relay.json,
-///      optional for a Testnet relay only (default base-sepolia), so that another network's relay never overwrites
-///      that record. A checkpoint file that names its network must name the configuration's.
+///      required, so that no deployment overwrites another's record. A checkpoint file that names its network must name
+///      the configuration's.
 ///      The relay does not depend on the Base chain it runs on, so no chain id is checked; the output records it.
-///        RELAY_CHECKPOINT=deployments/base-sepolia.relay-checkpoint.json \
+///        RELAY_CHECKPOINT=<testnet checkpoint> DEPLOYMENT_NAME=my-testnet-relay \
 ///          forge script script/DeployRelay.s.sol --rpc-url <rpc> --broadcast
 ///        RELAY_NETWORK=mainnet RELAY_CHECKPOINT=<mainnet checkpoint> DEPLOYMENT_NAME=base-sepolia-mainnet-shadow \
 ///          forge script script/DeployRelay.s.sol --rpc-url <rpc> --broadcast
@@ -63,13 +63,11 @@ contract DeployRelay is Script {
         vm.writeJson(out, string.concat("deployments/", name, ".relay.json"));
     }
 
-    /// @notice The name of the deployment record (deployments/<name>.relay.json): `requested` (DEPLOYMENT_NAME) if
-    ///         set, otherwise `base-sepolia` for a Testnet relay. A relay of any other network must be named, so that
-    ///         deploying it never overwrites the Testnet relay's record.
-    function deploymentName(bytes32 networkId, string memory requested) public pure returns (string memory) {
-        if (bytes(requested).length != 0) return requested;
-        require(networkId == ZCASH_TESTNET, "DeployRelay: set DEPLOYMENT_NAME, only a Testnet relay has a default");
-        return "base-sepolia";
+    /// @notice The name of the deployment record (deployments/<name>.relay.json): `requested` (DEPLOYMENT_NAME), which
+    ///         every deployment sets, so that none overwrites another's record (`base-sepolia` is Zecured's live run).
+    function deploymentName(bytes32, string memory requested) public pure returns (string memory) {
+        require(bytes(requested).length != 0, "DeployRelay: set DEPLOYMENT_NAME");
+        return requested;
     }
 
     /// @notice ZIP 259 requires the NU7 activation height to be a multiple of 3 (ZIP 214 revision 3): catches a

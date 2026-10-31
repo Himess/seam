@@ -38,6 +38,8 @@ jobs:
         network: [test, main]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # The CLI's release build and the guest-builder image outgrow the runner's free disk otherwise.
       - name: Free disk space

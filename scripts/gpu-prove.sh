@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Builds the payment guests and proves a payment on a rented x86 machine with an NVIDIA GPU and Docker. Runs ON that
 # machine, in a copy of the repository (`git archive`): no .env, no keys, nothing private but the witness being proven,
-# which `wipe` removes afterwards. Adapted from Zecured's scripts/gpu-prove.sh
-# (73de9f909e270e8aea10c2b221905f62a6a4c4df).
+# which `wipe` removes afterwards. Whoever runs the machine can read its disk and memory: prove a real payment's witness
+# only on a machine you control, and a rented one only for a disposable wallet's (docs/PAYMENTS.md § 5). Adapted from
+# Zecured's scripts/gpu-prove.sh (73de9f909e270e8aea10c2b221905f62a6a4c4df).
 #
 #   scripts/gpu-prove.sh setup                         # once: CUDA 12.8 if needed, Rust, rzup, seam with `cuda`
 #   scripts/gpu-prove.sh guests <out-dir>              # both guests, built in RISC Zero's guest-builder image: their
@@ -20,6 +21,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CUDA_SEAM="$ROOT/target/release/seam"
+# The prover writes its segments, which hold the witness, to TMPDIR: in memory (tmpfs), never on the disk, and removed
+# by `wipe`.
+SCRATCH=/dev/shm/seam-prove
 export PATH="$HOME/.cargo/bin:$HOME/.risc0/bin:$PATH"
 
 # The seam that embeds the `net` guest, built in Docker by `guests` (no `cuda`): parity, export-elf and the Docker wrap.
@@ -53,7 +57,7 @@ setup() {
   fi
   rustup toolchain install "$(sed -n 's/^channel = "\(.*\)"$/\1/p' "$ROOT/rust-toolchain.toml")" --profile minimal
   if ! command -v rzup >/dev/null; then
-    curl -sSfL https://risczero.com/install | bash
+    curl --proto '=https' --tlsv1.2 -sSfL https://risczero.com/install | bash
   fi
   # risc0-build asks rzup for the guest toolchain's version even when Docker builds the guest; r0vm runs the executor
   # and the Docker wrap of the builds without `cuda`; risc0-groth16 3.0.5 looks for version 0.1.0 of its component.
@@ -69,6 +73,7 @@ setup() {
 guests() {
   local out="$1" net features seam
   mkdir -p "$out"
+  : > "$out/pinned-image-ids.txt" # a rerun writes the lines again, not twice
   cd "$ROOT"
   for net in test main; do
     features=zkvm
@@ -91,6 +96,8 @@ prove() {
   : "${SEAM_PAYMENT_ELF:?SEAM_PAYMENT_ELF: the pinned payment guest}"
   [[ -x "$(docker_seam test)" ]] || { echo "run guests first: the Groth16 wrap uses its build" >&2; exit 1; }
   mkdir -p "$out"
+  mkdir -p -m 700 "$SCRATCH"
+  export TMPDIR="$SCRATCH"
   # 2^20-cycle segments suit a 24 GB GPU (seam's default, 2^18, suits an 8 GB machine).
   export SEAM_SEGMENT_PO2="${SEAM_SEGMENT_PO2:-20}"
   "$CUDA_SEAM" image-id | tee "$out/image-id"
@@ -110,8 +117,11 @@ prove() {
 
 wipe() {
   local witness="$1" out="$2"
-  shred -u "$witness"
+  # The receipts and the prover's segments first: a shred that fails must not leave them behind. shred is best effort
+  # on SSDs and cloud volumes; only destroying the machine and its disk is sure.
   rm -f "$out/payment.receipt" "$out/payment.p254"
+  rm -rf "$SCRATCH"
+  shred -u "$witness"
   ls -l "$out"
 }
 

@@ -230,14 +230,15 @@ contract ZcashHeaderRelayParamsTest is RelayFixtures {
         script.loadCheckpoint(RECENT, "Zcash Mainnet");
     }
 
-    /// @notice Only a Testnet relay has a default record name (base-sepolia, the deployed Testnet relay's record): a
-    ///         Mainnet relay must be named, so that it cannot overwrite that record.
+    /// @notice Every deployment names its record, so that none overwrites another's (base-sepolia is the record of
+    ///         Zecured's live run).
     function test_config_deploymentName() public {
         DeployRelay script = new DeployRelay();
-        assertEq(script.deploymentName(ZCASH_TESTNET, ""), "base-sepolia");
         assertEq(script.deploymentName(ZCASH_TESTNET, "anvil"), "anvil");
         assertEq(script.deploymentName(ZCASH_MAINNET, "base-sepolia-mainnet-shadow"), "base-sepolia-mainnet-shadow");
-        vm.expectRevert(bytes("DeployRelay: set DEPLOYMENT_NAME, only a Testnet relay has a default"));
+        vm.expectRevert(bytes("DeployRelay: set DEPLOYMENT_NAME"));
+        script.deploymentName(ZCASH_TESTNET, "");
+        vm.expectRevert(bytes("DeployRelay: set DEPLOYMENT_NAME"));
         script.deploymentName(ZCASH_MAINNET, "");
     }
 
