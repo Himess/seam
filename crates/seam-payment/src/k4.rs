@@ -300,8 +300,31 @@ pub fn add_transparent_output(w: &mut PaymentWitness) {
     w.tx = tx;
 }
 
+/// The witness's transaction with one transparent input added (the Ironwood-only rule forbids it).
+pub fn add_transparent_input(w: &mut PaymentWitness) {
+    // v6: 20 header bytes, then the transparent input and output counts (both 0).
+    assert_eq!(&w.tx[20..22], &[0, 0]);
+    let mut tx = w.tx[..20].to_vec();
+    tx.push(1);
+    tx.extend_from_slice(&[0x11; 32]); // the outpoint's txid
+    tx.extend_from_slice(&0u32.to_le_bytes()); // and output index
+    tx.push(0); // an empty script
+    tx.extend_from_slice(&u32::MAX.to_le_bytes()); // the sequence
+    tx.extend_from_slice(&w.tx[21..]);
+    w.tx = tx;
+}
+
 /// Length of a serialized Ironwood action without its signature: cv_net, nf, rk, cmx, epk and both ciphertexts.
 const ACTION_LENGTH: usize = 5 * 32 + ENC_CIPHERTEXT_SIZE + OUT_CIPHERTEXT_SIZE;
+
+/// The witness's transaction with the 32 bytes at `offset` in its first action all 0xff: above the field's modulus,
+/// so no canonical encoding of a field element or a point (an action is cv_net, nf, rk, cmx, epk, ... in that order).
+fn non_canonical(w: &mut PaymentWitness, offset: usize) {
+    // v6: 20 header bytes, four empty counts, the Ironwood action count, then its first action.
+    assert_eq!(&w.tx[20..25], &[0, 0, 0, 0, 0]);
+    let at = 26 + offset;
+    w.tx[at..at + 32].fill(0xff);
+}
 
 /// The witness's transaction with a copy of its Ironwood bundle in the Orchard pool's place (the Ironwood-only rule
 /// forbids any Orchard-pool bundle). The copy's flags clear `enableCrossAddress`, which an Orchard-pool bundle may not
@@ -408,7 +431,11 @@ pub fn mutations(net: &Network) -> Vec<Mutation> {
         m("truncated transaction", |w| w.tx.truncate(100), Refused(Transaction)),
         m("a v5 transaction's header", with_v5_header, Refused(NotV6)),
         m("a transparent output", add_transparent_output, Refused(NotIronwoodOnly)),
+        m("a transparent input", add_transparent_input, Refused(NotIronwoodOnly)),
         m("no Ironwood bundle", drop_ironwood_bundle, Refused(NotIronwoodOnly)),
+        m("a nullifier that is no field element", |w| non_canonical(w, 32), Refused(Transaction)),
+        m("a note commitment that is no field element", |w| non_canonical(w, 96), Refused(Transaction)),
+        m("an ephemeral key that is no point", |w| non_canonical(w, 128), Refused(Transaction)),
         m("the Ironwood bundle's outputs disabled", disable_outputs, Refused(OutputsDisabled)),
         m("action index out of range", |w| w.action_index = 99, Refused(NoSuchAction)),
         m("re-anchored, unchanged (the statement checks no proof of work)", reanchor, Accepted),
@@ -416,6 +443,14 @@ pub fn mutations(net: &Network) -> Vec<Mutation> {
             "a transparent output, re-anchored",
             |w| {
                 add_transparent_output(w);
+                reanchor(w);
+            },
+            Refused(NotIronwoodOnly),
+        ),
+        m(
+            "a transparent input, re-anchored",
+            |w| {
+                add_transparent_input(w);
                 reanchor(w);
             },
             Refused(NotIronwoodOnly),
@@ -492,6 +527,8 @@ pub fn mutations(net: &Network) -> Vec<Mutation> {
         ),
         m("another auth data root", |w| w.tip_auth_data_root[0] ^= 1, Refused(HistoryNotCommitted)),
         m("T's hashBlockCommitments changed", |w| w.tip_header[80] ^= 1, Refused(HistoryNotCommitted)),
+        // The header's nonce (bytes 108..140) is outside what the statement checks: the anchor, T's hash, moves.
+        m("T's nonce changed", |w| w.tip_header[108] ^= 1, Accepted),
         // 4. The note.
         m("the other action of the transaction", |w| w.action_index ^= 1, Refused(NotDecryptable)),
         m("value + 1", |w| w.note_value += 1, Refused(NoteCommitmentMismatch)),
@@ -587,6 +624,17 @@ pub fn mutations(net: &Network) -> Vec<Mutation> {
             Accepted,
         ),
         // 6. The receiver commitment and the amount are the journal's to bind.
+        m(
+            "a payment to another receiver, with its opening",
+            |w| {
+                w.note_recipient = test_receiver(OTHER_RECEIVER_SPENDING_KEY).to_vec();
+                with_memo(w, payment_memo(&fixture_payment_ref()));
+            },
+            Rebound(Binding {
+                receiver_commitment: receiver_commitment(&FIXTURE_SALT, &test_receiver(OTHER_RECEIVER_SPENDING_KEY)),
+                ..fixture
+            }),
+        ),
         m(
             "another salt",
             |w| w.salt[0] ^= 1,

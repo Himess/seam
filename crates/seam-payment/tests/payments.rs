@@ -181,11 +181,15 @@ fn the_k4_catalog() {
         let base_journal = verify_on(&net, &base).expect("the base witness proves");
         let catalog = mutations(&net);
         // Mainnet's statement also proves NU6.3, and has one more change.
-        assert_eq!(catalog.len(), if net == MAINNET { 53 } else { 52 }, "changes on {}", net.name);
+        assert_eq!(catalog.len(), if net == MAINNET { 60 } else { 59 }, "changes on {}", net.name);
         for m in catalog {
             let mut w = base.clone();
             (m.apply)(&mut w);
             let got = verify_on(&net, &w);
+            // An accepted witness's anchor is its own T, whatever the change.
+            if let Ok(j) = &got {
+                assert_eq!(j.anchor, sha256d(&w.tip_header), "{} on {}: the anchor is T's hash", m.name, net.name);
+            }
             assert!(
                 as_expected(m.expected, &base_journal, &got),
                 "{} on {}: got {got:?}, expected {:?}",

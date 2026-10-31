@@ -4,8 +4,8 @@
 
 Shielded payment proofs (docs/PAYMENTS.md), adapted from Zecured's payment path at `73de9f9`:
 - `crates/seam-payment`: the statement a payment proof proves. The memo binds a text reference, `seam1:` and 64
-  lowercase hex digits, that any wallet can send, and the journal opens with a version. Its K4 catalog: 52 single
-  changes to a witness for the Testnet statement and 53 for Mainnet's, each with the outcome it must have.
+  lowercase hex digits, that any wallet can send, and the journal opens with a version. Its K4 catalog: 59 single
+  changes to a witness for the Testnet statement and 60 for Mainnet's, each with the outcome it must have.
 - `zkvm/`: the RISC Zero guest (risc0 3.0.6), one per network, built in RISC Zero's Docker builder for reproducible
   image ids, and the vendored `pasta_curves` with Zecured's zkVM patch.
 - `crates/seam-chain` and `crates/seam-cli`: the chain data a witness needs, from Zcash peers and a light wallet server;
@@ -27,6 +27,8 @@ Shielded payment proofs (docs/PAYMENTS.md), adapted from Zecured's payment path 
   - `seam witness` checks that the server sent the transaction asked for; the CLI never overwrites a file it writes,
     and keeps file contents out of its errors;
   - `abi/IZcashPaymentVerifier.json`;
+  - seven more K4 changes (a transparent input, non-canonical nf, cmx and epk, T's nonce, a payment to another
+    receiver), and every accepted witness's anchor checked against its T; the zkVM ran the first 52 and 53;
   - PAYMENTS.md and INTEGRATING.md say what a payer must check before paying, who can prove today, what the light
     wallet server learns, what has been proven so far, and why Testnet secures nothing.
 
