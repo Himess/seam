@@ -12,8 +12,8 @@ A proof is a RISC Zero receipt (wrapped in Groth16) that the guest accepted a pr
 1. **Epoch.** Its consensus branch id is one the build allows, and the transaction carries the same one. The Testnet
    build allows NU7's; the Mainnet build allows NU6.3's and NU7's. The network is a build parameter, never a witness
    field, so each network has its own guest and image id.
-2. **Shape.** The transaction is v6 and Ironwood-only, with outputs enabled: no transparent input or output, and no
-   Sapling or Orchard-pool bundle, even an empty one.
+2. **Shape.** The transaction is v6 and Ironwood-only, with outputs enabled: no transparent input or output, no
+   Sapling spend or output, and no Orchard-pool action.
 3. **Inclusion.** The transaction's txid reaches the `hashMerkleRoot` of its block B along a SHA-256d path. B's ZIP 221
    history-tree leaf, through its path and the peaks, with the auth data root of a later header T, reaches T's
    `hashBlockCommitments` (ZIP 244). Every node of that tree is personalized with the epoch's branch id, so B and T are
@@ -39,7 +39,7 @@ abi.encode(uint8 version = 1, uint32 branchId, bytes32 anchor, bytes32 paymentRe
 | On chain | Never on chain |
 |---|---|
 | the anchor T, a header the relay already holds | the transaction id |
-| `paymentRef`, chosen by the app | the payment's block B, hidden among the epoch's blocks below T |
+| `paymentRef`, chosen by the app | the payment's block B, hidden among the blocks between the order and T |
 | the receiver commitment `keccak256(salt32 \|\| receiver43)` | the note commitment and the nullifier |
 | the value, in zatoshi, and the branch id | the receiver, its address and viewing key, and the salt |
 
@@ -64,6 +64,9 @@ salt, in a file only its owner may read, and prints the commitment an app commit
   or signature (Zcash's consensus did, when the block was mined into the chain the relay follows). A chain an attacker
   mines in private can carry any transaction, so the work an app requires on top of an anchor must outweigh what all
   its open payments are worth together: one deep enough reorganisation could fake a payment for each of them.
+- **What has been proven so far.** One real payment, on Testnet, made with `seam pay`. The Mainnet guest is pinned but
+  has proven no real Mainnet payment: prove one, against real NU6.3 and NU7 history, before a verifier pins it on
+  Mainnet. No payment from another wallet has been proven yet.
 
 ## 4. How to pay
 
@@ -80,12 +83,21 @@ The payment must be Ironwood-only: a wallet that adds a transparent change outpu
 pool (the Orchard pool uses the same address format), makes a transaction the statement refuses. And the whole amount
 must arrive in one note: two notes of half the amount are two payments of half.
 
+**Check the receiver before paying.** The commitment names one exact receiver: a payment to any other address of the
+same wallet (another diversifier, its default address) arrives, but never proves the order. So get the salt and the
+address, and check that `seam commitment --address <ua> --salt-file <file>` prints the order's `receiverCommitment`.
+A receiver who won't share the salt can't be paid safely.
+
 ## 5. Who can prove
 
 The witness needs the note's opening and the transaction's place in the chain. Two parties have the opening:
 - **the payer,** who built the transaction and kept the opening (with `ovk = None`, nobody else can recover the note
   from the chain);
 - **the receiver,** who finds the note with its viewing key by trial decryption.
+
+Today a payer can prove only after paying with `seam pay`, which keeps the opening; it pays on Testnet only. Most
+wallets don't export a note's opening, and `seam witness` can't yet recover a note with the payer's outgoing viewing
+key. So on Mainnet, for now, only the receiver can prove: an app whose payer must prove has to wait for that.
 
 Either one builds the witness locally with `seam witness`, from chain data any node or lightwalletd server serves.
 Proving runs on any machine with the witness; a witness should never leave a machine its owner doesn't control.
@@ -114,8 +126,8 @@ is the app's choice:
 
 ## 7. Choosing the anchor
 
-The anchor reveals a header, so it tells an observer the payment is in some block of T's epoch below T. To keep that
-set large:
+The anchor reveals a header, so it tells an observer the payment is in some block below T, after the order that
+published its reference. To keep that set large:
 - **Fix the anchor height first,** then pay after a random delay, so the payment's time says nothing about the anchor.
 - **Keep the payment and its anchor in one epoch.** The ZIP 221 history tree restarts at every network upgrade, so a
   payment made before an activation can only be proven against an anchor before it.
@@ -149,4 +161,6 @@ Testnet guest:
 
 The proof took 81 s of a machine rented at $0.52 an hour, about one cent. The whole session, with the setup and two
 clean builds of both guests, took about 22 minutes, about $0.20. The seal, journal and image id are in
-`contracts/test/examples/fixtures/testnet_real_payment.json`, which the fork test settles an escrow order with.
+`contracts/test/examples/fixtures/testnet_real_payment.json`, which the fork test settles an escrow order with. The
+witness proven there is the TEST-ONLY fixture of two disposable wallets; a real witness stays on a machine its owner
+controls (§ 5).

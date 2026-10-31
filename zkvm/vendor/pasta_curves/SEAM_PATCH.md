@@ -9,3 +9,12 @@ The only change to the crate: when compiled for the RISC Zero zkVM (`target_os =
 multiplication, squaring and inversion go through RISC Zero's `bigint2` modular arithmetic accelerator
 (`src/fields/fp.rs`, `src/fields/fq.rs`, look for `ZECURED PATCH`), which takes about a third of the cycles. Every other
 target compiles the original code. The crate keeps its licences (`LICENSE-MIT`, `LICENSE-APACHE`).
+
+Exactly what changes, in each field:
+- **Accelerated:** `mul_runtime`, `square_runtime` and `sqr_n_mul_runtime`, behind `*`, `*=`, `Field::square` and
+  the exponentiations (square roots included), and `invert` and `invert_vartime`.
+- **Unchanged:** the `const fn`s (`mul`, `square`, `from_raw`), `from_u512` and `to_repr`. They return the same
+  canonical Montgomery value as the accelerated paths.
+- **The invariant it relies on:** every `Fp` and `Fq` value is canonical, below the modulus. The zero check before an
+  inversion and the square-root tables depend on it. The checked `bigint2` calls only ever return canonical values,
+  and `from_repr` refuses an encoding at or above the modulus before using it.

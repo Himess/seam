@@ -2,9 +2,11 @@
 //! states. Ported from Zecured's `signer/crates/zcash-ops/src/lwd.rs` (73de9f909e270e8aea10c2b221905f62a6a4c4df),
 //! with zcash_client_backend's generated client as there.
 //!
-//! The server is trusted for data availability only: every compact block is checked against its header from the P2P
-//! network, every rebuilt note commitment tree against the server's own tree states, and the history root against
-//! the anchor header's commitments. Every call is bounded in time. A server's URL may carry an API key, so it never
+//! For a witness, the server is trusted for data availability only: every compact block is checked against its header
+//! from the P2P network, every rebuilt note commitment tree against the server's own tree states, and the history root
+//! against the anchor header's commitments. The headers' proof of work is left to the relay, which must hold the anchor.
+//! A wallet scan for `seam pay` checks nothing against headers: there the server can hide notes, or hold back a
+//! transaction it says it accepted. Every call is bounded in time. A server's URL may carry an API key, so it never
 //! appears in an error or a log.
 
 use std::time::Duration;

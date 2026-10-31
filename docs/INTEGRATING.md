@@ -175,7 +175,8 @@ require(anchorWork >= minWork);
 - **A reference only you use.** Derive `paymentRef` from your chain id, your contract and the obligation: a proof made
   for another contract or chain then names another reference.
 - **The receiver commitment** is `keccak256(salt32 || receiver43)`. The salt must be fresh, random and secret for each
-  payment, shared off chain only with whoever proves.
+  payment, shared off chain only with the payer and whoever proves. It names one exact receiver: a payment to another
+  address of the same wallet never counts, so the payer checks the commitment before paying (PAYMENTS.md § 4).
 - **Finality.** Require `anchorWork >= minWork` (§ 4), with `minWork` sized against what all your open obligations are
   worth together: a chain an attacker mines in private can carry any payment. Then a pending window before you act,
   and a drop of any pending settlement whose anchor left the best chain.
