@@ -17,6 +17,17 @@ target/
 *.jsonl
 *.jsonl.peers
 
+# The CLI's files, if written inside the repository: wallets and their keys, openings, salts, viewing keys,
+# witnesses, receipts, and the chain-data cache. Better: keep them outside it.
+seam-data/
+*wallet*.json
+*opening*.json
+*witness*.json
+*salt*.txt
+*ufvk*.txt
+*.receipt
+!crates/seam-payment/tests/fixtures/TEST-ONLY_*.json
+
 # Python
 __pycache__/
 *.pyc

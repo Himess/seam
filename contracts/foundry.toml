@@ -9,13 +9,14 @@ solc_version = "0.8.28"
 evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
-# script/DeployRelay.s.sol reads a parameter file in config/ and a checkpoint file, and writes
-# deployments/<name>.relay.json (a simulation too). The tests read the header fixtures in test/relay/fixtures, the
-# parameter files and the deployment records (read-only).
+# script/DeployRelay.s.sol reads a parameter file in config/ and a checkpoint file. The deploy scripts write their
+# records in deployments/ when they broadcast, never over an existing one. The tests read the header fixtures in
+# test/relay/fixtures, the parameter files and the deployment records (read-only).
 fs_permissions = [
     { access = "read-write", path = "./deployments" },
     { access = "read", path = "./config" },
     { access = "read", path = "./test/relay/fixtures" },
+    { access = "read", path = "./test/examples/fixtures" },
 ]
 # Static test linking. Forge >= 1.x links test code dynamically by default and rewrites `new` of a src/ contract into
 # `deployCode`: then `vm.expectRevert` followed by a reverting `new` ends the test as a pass and silently skips every

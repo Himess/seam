@@ -20,10 +20,11 @@ How a contract reads a Seam relay safely.
 ## 2. Install
 
 ```sh
-forge install Himess/seam@v0.1.0
+forge install Himess/seam@v0.2.0
 ```
 
-Add the remapping `seam/=lib/seam/contracts/src/`. Then:
+Add the remapping `seam/=lib/seam/contracts/src/`, and, to compile the relay or the examples, OpenZeppelin's
+(`@openzeppelin/contracts/=lib/seam/contracts/lib/openzeppelin-contracts/contracts/`). Then:
 
 - **`seam/interfaces/IZcashHeaderRelayReader.sol`:** the read side, for any 0.8 compiler (CI builds it with solc
   0.8.0). Its selectors and return encodings are the relay's
@@ -75,13 +76,24 @@ so 10 blocks ≈ 3,556,000. On Mainnet (`RELAY=0x527B6347d2392d17fa5Bd13DF88A436
 259,156,774,611,907: about 2.59 × 10^12 a block.
 [`ZcashFinalityGate`](../contracts/src/examples/ZcashFinalityGate.sol) packages the check.
 
+**Testnet secures nothing.** A block's work is the number of Equihash solutions expected to find it, and a single
+Equihash ASIC finds hundreds of thousands a second: more than all of Testnet's miners together. Ten Testnet blocks of
+work (3,556,000, the value Seam's fork test uses) take it seconds, and are about a millionth of one Mainnet block. A
+Testnet relay is for trying things out: never let it vouch for anything of value, and never carry a Testnet `minWork`
+over to Mainnet.
+
+**Sizing it on Mainnet.** Faking a payment under `minWork` means mining that much work in private, from a fork point
+below the anchor, and overtaking the honest chain with it. Require enough blocks of work that renting the hashrate to do
+so costs more than everything your open obligations hold together.
+
 ## 5. Reorganisations
 
 - **What happens:** a heavier branch replaces the best chain, and `BestChainUpdated` says so, with `forkHeight` below
   the previous tip's height. `isInBestChain` and `confirmationWork` can then change for blocks above the fork.
 - **What to do:** check at the moment you act, and pick a `minWork` that makes reorganising past your action
   uneconomic.
-- **Depth:** the relay follows the most work at any depth. Zebra refuses to reorganise below 1,000 blocks.
+- **Depth:** the relay follows the most work at any depth, where Zebra refuses to reorganise below 1,000 blocks. The
+  relay's finality is never more than the work you require.
 
 ## 6. A relay that falls behind
 
@@ -119,7 +131,7 @@ To prove something a block contains:
 
 Don't put a Zcash transaction id, note commitment or address on a public chain. A Merkle proof of a transaction against
 `merkleRoot` links that transaction to whoever submits it. Prove what your app needs in zero knowledge, and reveal only
-that. Seam's payment proofs, next on the roadmap, do this for shielded payments.
+that. Seam's payment proofs do this for shielded payments (§ 10).
 
 ## 9. Gas
 
@@ -135,3 +147,54 @@ own execution; the calling contract adds the call itself (2,600 gas for an addre
 | `headerOf` | 9,690 | 3,006 |
 | `bestChainTip` | 4,609 | — |
 | `bestBlockHashAt` | 6,809 | 4,659 (a height above the tip) |
+
+## 10. Shielded payments
+
+`ZcashPaymentVerifier` checks a Seam payment proof: a shielded Ironwood payment of `zatoshi` to the receiver behind
+`receiverCommitment`, whose memo names `paymentRef`, in the chain history of header `anchor` on a Seam relay's best
+chain ([PAYMENTS.md](PAYMENTS.md)). A contract that requires a payment checks what the proof binds against its own
+obligation:
+
+```solidity
+import {IZcashPaymentVerifier, ZcashPayment} from "seam/payment/IZcashPaymentVerifier.sol";
+
+(ZcashPayment memory p, uint256 anchorWork) = verifier.verify(journal, seal);
+require(p.paymentRef == keccak256(abi.encode(block.chainid, address(this), obligationId)));
+require(p.receiverCommitment == receiverCommitment);
+require(p.zatoshi >= price);
+require(anchorWork >= minWork);
+require(relay.headerOf(p.anchor).time <= deadline);
+// Then start a pending window, and settle this obligation once, after it, if the anchor is still final.
+```
+
+The bullets below say why each line is there, and what else an app needs;
+[`ShieldedPaymentEscrow`](../contracts/src/examples/ShieldedPaymentEscrow.sol) has them all.
+
+- **Check the verifier once, as you check the relay (§ 1):**
+  - `relay()` is the relay you checked, and `networkId()` its network;
+  - `imageId()` is the guest pinned for that network in `zkvm/pinned-image-ids.txt`, which anyone can rebuild;
+  - `riscZeroVerifier()` is RISC Zero's verifier router on your chain, and `selector()` the Groth16 verifier it
+    dispatches to. On Base Sepolia, Seam's fork test uses the router `0x0b144E07A0826182B6b59788c34b32Bfa86Fb711` and
+    the selector `0x73c457ba` (risc0 3.0); the allowed branch ids are NU7's `0x77190AD9` (and NU6.3's `0x37A5165B` on
+    Mainnet).
+- **One payment, one settlement.** `verify` is stateless: it accepts the same proof any number of times, and one
+  payment under many anchors. Bind each `paymentRef` to one obligation and settle it once.
+- **A reference only you use.** Derive `paymentRef` from your chain id, your contract and the obligation: a proof made
+  for another contract or chain then names another reference.
+- **The receiver commitment** is `keccak256(salt32 || receiver43)`. The salt must be fresh, random and secret for each
+  payment, shared off chain only with the payer and whoever proves. It names one exact receiver: a payment to another
+  address of the same wallet never counts, so the payer checks the commitment before paying (PAYMENTS.md § 4).
+- **Finality.** Require `anchorWork >= minWork` (§ 4), with `minWork` sized against what all your open obligations are
+  worth together: a chain an attacker mines in private can carry any payment. Then a pending window before you act,
+  and a drop of any pending settlement whose anchor left the best chain.
+- **Deadlines, judged on the Zcash side.** Compare the anchor's header time (`headerOf(p.anchor).time`) with your
+  deadline, not the time of the proof on your chain, and give provers a grace period after it: a payer who paid in time
+  must not lose to a slow prover or a lagging relay (§ 6). This protects honest payers, not against forgery: whoever
+  mines a block picks its time, within consensus bounds.
+- **Size the windows together.** The grace period must cover the time `minWork` takes to pile up on an anchor mined
+  at the deadline, plus proving and a relay that lags. A pending settlement finishes only once the relay has moved on,
+  so a relay nobody feeds holds the order until someone does ([RELAYING.md](RELAYING.md)).
+- **The amount is public:** `zatoshi` is in the journal.
+
+[`ShieldedPaymentEscrow`](../contracts/src/examples/ShieldedPaymentEscrow.sol) puts these together. Its gas is in
+[PAYMENTS.md § 8](PAYMENTS.md#8-cost).

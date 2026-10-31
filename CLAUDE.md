@@ -17,8 +17,8 @@ or a test fails, say so; never report unverified code as working.
   `*.jsonl.peers`) hold peer addresses and stay local.
 - `TEST-ONLY_*` fixtures hold only disposable testnet wallets' data.
 - Every mock is labelled MOCK in code and listed in the README.
-- Always set `DEPLOYMENT_NAME` for `script/DeployRelay.s.sol`: the Testnet default, `base-sepolia`, is the record of
-  Zecured's live run.
+- The deploy scripts need `DEPLOYMENT_NAME` and refuse a name whose record exists: `base-sepolia` is the record of
+  Zecured's live run, `seam-base-sepolia*` are Seam's.
 - forge and cast load the `.env` of the directory they run in: run them from this repository.
 
 ## Commands

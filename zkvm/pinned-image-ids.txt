@@ -1,0 +1,7 @@
+# The payment guests' image ids, one per Zcash network, with the SHA-256 of each exported ELF: what a
+# ZcashPaymentVerifier pins for good (docs/PAYMENTS.md § 3). Each line: the guest, its image id, its ELF's SHA-256.
+# The guests workflow rebuilds both in RISC Zero's guest-builder image and fails when a pinned guest builds to another
+# id or ELF; a guest not listed here is reported, not checked. Change a line only together with the guest, and never
+# the line of a guest a deployed verifier pins.
+payment-test    0x783f02ced3d94f85578b418b26cb34d7d395d5fe689dd3c35c5c5dfc42add2b3  3a55e067beb1cd5552892bfd5ec5bdd6068aaa5743449717d8c0107aba40bc20
+payment-main    0xf8a08bffab4668dbb09d213e77789187688f2de706723d69c6286cdda2f783ca  4121d05881b62c144c6476a42f622e1745ebee6d91dd6e6d9aceef164f669fe1

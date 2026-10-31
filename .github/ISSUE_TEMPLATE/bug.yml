@@ -12,7 +12,7 @@ body:
     id: repro
     attributes:
       label: How to reproduce
-      description: Commands, the relay's address and network, the commit.
+      description: Commands, the relay's address and network, the commit. Leave out keys, RPC URLs that carry a key, peer addresses, viewing keys, salts, openings and witnesses.
   - type: input
     id: version
     attributes:

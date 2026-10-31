@@ -1,0 +1,12 @@
+{
+  "ZcashPaymentVerifier": "0x1701e16350A3F0E29DC45E75F356eAc9dAB8d5f9",
+  "branchIds": [
+    1998129881
+  ],
+  "chainId": 84532,
+  "imageId": "0x783f02ced3d94f85578b418b26cb34d7d395d5fe689dd3c35c5c5dfc42add2b3",
+  "networkId": "0x9319c941cc6f14fa909d37052da40b85687db2512b320009fcf27cb3815e1e39",
+  "relay": "0x77ceDADCFf8bE399C67AB579Ad739820FaC5cE0c",
+  "riscZeroVerifier": "0x0b144E07A0826182B6b59788c34b32Bfa86Fb711",
+  "selector": "0x73c457ba"
+}

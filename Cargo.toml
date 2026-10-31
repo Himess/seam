@@ -1,0 +1,26 @@
+# Seam's Rust crates: the payment statement and, built on it, the chain data, the witness builder and the CLI. The
+# zkVM guest is its own workspace (zkvm/guest), built by risc0-build.
+[workspace]
+resolver = "2"
+members = ["crates/seam-payment", "crates/seam-chain", "crates/seam-cli", "zkvm/methods"]
+# risc0-build does not build on Windows: a plain `cargo build` or `cargo test` leaves the guest crate out, and
+# `cargo build -p seam-zkvm-methods` builds it on Linux or macOS (RISC0_SKIP_BUILD=1 skips the guest itself).
+default-members = ["crates/seam-payment", "crates/seam-chain", "crates/seam-cli"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+
+# The statement's elliptic-curve and hash work is unusably slow in tests without optimization. Debug info: line tables
+# for Seam's crates (enough for backtraces) and none for dependencies, whose full debug info (the light wallet client,
+# Halo 2 and the rest of the Zcash stack seam-chain pulls in) takes gigabytes of disk.
+[profile.dev]
+opt-level = 3
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+[profile.release]
+debug = 1
+lto = true

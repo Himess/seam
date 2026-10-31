@@ -1,0 +1,129 @@
+# Reproducible builds of the payment guest, one per Zcash network: the network is a build parameter of the statement,
+# so Testnet and Mainnet each have their own guest and image id (payment-test, payment-main). A ZcashPaymentVerifier
+# pins one for good, and provers run the ELF this job exports (SEAM_PAYMENT_ELF). A guest listed in
+# zkvm/pinned-image-ids.txt must build to its pinned id and ELF, or the job fails. Adapted from Zecured's guests
+# workflow (73de9f909e270e8aea10c2b221905f62a6a4c4df).
+name: guests
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "crates/seam-payment/**"
+      - "crates/seam-cli/**"
+      - "zkvm/**"
+      - "Cargo.lock"
+      - ".github/workflows/guests.yml"
+  # A pull request that changes the guest gets its image ids before it is merged.
+  pull_request:
+    paths:
+      - "crates/seam-payment/**"
+      - "crates/seam-cli/**"
+      - "zkvm/**"
+      - "Cargo.lock"
+      - ".github/workflows/guests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  guest:
+    name: payment-${{ matrix.network }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        network: [test, main]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The CLI's release build and the guest-builder image outgrow the runner's free disk otherwise.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune --all --force
+          df -h /
+
+      - name: Rust, as rust-toolchain.toml pins it
+        run: rustup toolchain install "$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)" --profile minimal
+
+      # risc0-build asks rzup for the guest toolchain's version even when Docker builds the guest (it picks a rustc
+      # flag by version); the guest itself is compiled inside the image. r0vm runs the executor for the parity check.
+      - name: rzup, the risc0 Rust toolchain and r0vm
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -sSfL https://risczero.com/install | bash
+          "$HOME/.risc0/bin/rzup" install rust 1.97.0
+          "$HOME/.risc0/bin/rzup" install r0vm 3.0.6
+          echo "$HOME/.risc0/bin" >> "$GITHUB_PATH"
+
+      # The CLI's `mainnet` feature sets both the native statement and the embedded guest (its own `mainnet` feature):
+      # one switch, so the parity run compares like with like.
+      - name: The CLI, with the ${{ matrix.network }} guest built in RISC Zero's guest-builder image
+        env:
+          SEAM_DOCKER_GUESTS: "1"
+        run: cargo build --release --locked -p seam-cli --features zkvm${{ matrix.network == 'main' && ',mainnet' || '' }}
+
+      - name: Disk after the build
+        if: always()
+        run: df -h /
+
+      - name: The image id and the ELF to pin
+        env:
+          NET: ${{ matrix.network }}
+        run: |
+          seam=target/release/seam
+          mkdir -p guests
+          "$seam" export-elf "guests/payment-$NET.bin"
+          {
+            echo "payment-$NET    $("$seam" image-id)  $(sha256sum "guests/payment-$NET.bin" | cut -d' ' -f1)"
+          } | tee "guests/image-ids-$NET.txt"
+          {
+            echo "### Payment guest, $NET network (reproducible build)"
+            echo '```'
+            cat "guests/image-ids-$NET.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # A pinned guest must build to its pinned id and ELF, so that a change to shared code never moves the id a
+      # verifier pins without the pinned file changing in the same commit.
+      - name: The build matches zkvm/pinned-image-ids.txt
+        env:
+          NET: ${{ matrix.network }}
+        run: |
+          read -r name id elf < "guests/image-ids-$NET.txt"
+          pinned_id=$(awk -v g="$name" '$1 == g { print $2 }' zkvm/pinned-image-ids.txt)
+          pinned_elf=$(awk -v g="$name" '$1 == g { print $3 }' zkvm/pinned-image-ids.txt)
+          if [ -z "$pinned_id" ]; then
+            echo "::notice::$name is not pinned: $id"
+            exit 0
+          fi
+          if [ "$id" != "$pinned_id" ]; then
+            echo "::error::$name builds to $id, pinned $pinned_id"
+            exit 1
+          fi
+          if [ "$elf" != "$pinned_elf" ]; then
+            echo "::error::$name's ELF differs from the pinned one"
+            exit 1
+          fi
+          echo "$name: pinned id and ELF"
+
+      # The statement natively, on this network's build: its K4 catalog on the synthetic fixture.
+      - name: The statement, natively
+        run: cargo test --locked -p seam-payment${{ matrix.network == 'main' && ' --features mainnet' || '' }}
+
+      # The Docker-built guest must behave exactly as the native statement: every change of the K4 catalog of the
+      # synthetic payment, for this network, gives the same outcome in both.
+      - name: Parity of the guest with the native statement
+        run: target/release/seam parity crates/seam-payment/tests/fixtures/TEST-ONLY_testnet_ironwood_tx.json
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: payment-guest-${{ matrix.network }}-${{ github.sha }}
+          path: guests/
+          if-no-files-found: error

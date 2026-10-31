@@ -1,0 +1,53 @@
+[package]
+name = "seam-chain"
+description = "Zcash chain data for Seam payment proofs: the ZIP 221 history tree, headers over P2P, compact blocks, witnesses"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# The versions Zecured's witness builder was built with and used on real Testnet data (27 October 2026); the Zcash
+# crates are the pinned pre-releases crates/seam-payment uses.
+[dependencies]
+seam-payment = { path = "../seam-payment" }
+zcash_history = "0.6"
+zcash_protocol = "=0.11.0-pre.0"
+zcash_primitives = { version = "=0.31.0-pre.1", default-features = false }
+orchard = { version = "0.16", default-features = false, features = ["std"] }
+sapling = { package = "sapling-crypto", version = "0.9", default-features = false }
+incrementalmerkletree = { version = "0.9", features = ["legacy-api"] }
+zcash_note_encryption = "0.5"
+# `UnifiedFullViewingKey::from_orchard_fvk`, which encodes a disposable wallet's UFVK (`witness::fvk_ufvk`), is behind
+# `unstable-frost`, which gates that function alone.
+zcash_keys = { version = "=0.17.0-pre.1", default-features = false, features = ["std", "orchard", "unstable-frost"] }
+# The light wallet server's gRPC client and compact formats, as Zecured's zcash-ops used them.
+zcash_client_backend = { version = "=0.25.0-pre.1", default-features = false, features = [
+    "orchard",
+    "lightwalletd-tonic",
+    "lightwalletd-tonic-transport",
+    "lightwalletd-tonic-tls-webpki-roots",
+] }
+tonic = { version = "0.14", default-features = false, features = ["transport", "tls-ring", "tls-webpki-roots"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+# A payment: the PCZT roles from building to extraction, as Zecured's zcash-ops used them, with their RNG.
+pczt = { version = "=0.10.0-pre.1", default-features = false, features = [
+    "std",
+    "orchard",
+    "zcp-builder",
+    "io-finalizer",
+    "prover",
+    "signer",
+    "tx-extractor",
+] }
+rand = "0.10"
+primitive-types = { version = "0.12", default-features = false }
+blake2b_simd = "1"
+anyhow = "1"
+hex = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The P2P version message's nonce.
+rand_core = { version = "0.6", features = ["getrandom"] }
+
+[dev-dependencies]
+seam-payment = { path = "../seam-payment", features = ["k4"] }

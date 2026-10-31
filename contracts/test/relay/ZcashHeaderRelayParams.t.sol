@@ -230,15 +230,21 @@ contract ZcashHeaderRelayParamsTest is RelayFixtures {
         script.loadCheckpoint(RECENT, "Zcash Mainnet");
     }
 
-    /// @notice Only a Testnet relay has a default record name (base-sepolia, the deployed Testnet relay's record): a
-    ///         Mainnet relay must be named, so that it cannot overwrite that record.
-    function test_config_deploymentName() public {
+    /// @notice Every deployment names its record, and none overwrites another's: base-sepolia is the record of
+    ///         Zecured's live run, seam-base-sepolia Seam's Testnet relay.
+    function test_config_recordPath() public {
         DeployRelay script = new DeployRelay();
-        assertEq(script.deploymentName(ZCASH_TESTNET, ""), "base-sepolia");
-        assertEq(script.deploymentName(ZCASH_TESTNET, "anvil"), "anvil");
-        assertEq(script.deploymentName(ZCASH_MAINNET, "base-sepolia-mainnet-shadow"), "base-sepolia-mainnet-shadow");
-        vm.expectRevert(bytes("DeployRelay: set DEPLOYMENT_NAME, only a Testnet relay has a default"));
-        script.deploymentName(ZCASH_MAINNET, "");
+        assertEq(script.recordPath("anvil"), "deployments/anvil.relay.json");
+        vm.expectRevert(bytes("DeployRelay: set DEPLOYMENT_NAME"));
+        script.recordPath("");
+        vm.expectRevert(
+            bytes("DeployRelay: deployments/base-sepolia.relay.json exists: choose another DEPLOYMENT_NAME")
+        );
+        script.recordPath("base-sepolia");
+        vm.expectRevert(
+            bytes("DeployRelay: deployments/seam-base-sepolia.relay.json exists: choose another DEPLOYMENT_NAME")
+        );
+        script.recordPath("seam-base-sepolia");
     }
 
     /// @notice ZIP 259: an NU7 activation height is a multiple of 3; `NEVER` stands for "not assigned yet".
