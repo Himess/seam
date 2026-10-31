@@ -15,6 +15,11 @@ Shielded payment proofs (docs/PAYMENTS.md), adapted from Zecured's payment path 
   anchor on a Seam relay's best chain. No owner, no upgrade.
 - `ShieldedPaymentEscrow` (example, not audited): an ERC-20 locked until a shielded ZEC payment for the order is
   proven, with the payment's time judged on the Zcash side.
+- `zkvm/pinned-image-ids.txt` pins both guests: Testnet `0x783f02ce…d2b3` and Mainnet `0xf8a08bff…83ca`. Each was
+  built twice from scratch in RISC Zero's Docker builder, to the same ELF.
+- A real payment of 0.01 TAZ, proven on an RTX 4090 (19.9 M cycles; the STARK in 43 s, its Groth16 wrap in 34 s),
+  settles the example escrow's order on a Base Sepolia fork, through RISC Zero's router and Seam's Testnet relay
+  (`test/examples/ShieldedPaymentEscrowFork.t.sol`). `verify` costs 256,720 gas with the Groth16 check.
 
 ## v0.2.0 (unreleased)
 

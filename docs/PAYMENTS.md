@@ -131,5 +131,17 @@ storage cold.
 | `ShieldedPaymentEscrow.prove` | 120,369, with the `verify` above |
 | `ShieldedPaymentEscrow.finalize` | 97,216, with the token's transfer |
 
-The router's Groth16 check adds its own gas to `verify`. It, the guest's cycles and the proving time and cost are
-measured on a real Testnet payment, with its real seal, before v0.3.0 is released.
+The router's Groth16 check adds its own gas to `verify`. Measured on the real payment of 0.01 TAZ made on Zcash Testnet
+on 30 October 2026, proven on 31 October 2026 on a rented RTX 4090 (24 GB; 30 vCPU, 98 GB of RAM) with the pinned
+Testnet guest:
+
+| Step | Measured |
+|---|---|
+| The guest, in the executor | 19,918,817 cycles in 21 segments of 2^20, 0.9 s |
+| The succinct (STARK) receipt, on the GPU | 43.1 s |
+| Its Groth16 wrap, in Docker on the same machine | 34.2 s; the seal is 260 bytes (the router's selector and the proof) |
+| `verify` with the Groth16 check, through RISC Zero's router on a Base Sepolia fork | 256,720 gas (`gasleft()` around the call in `test_fork_theRealPaymentSettlesItsOrder`) |
+
+The proof took 81 s of a machine rented at $0.52 an hour, about one cent. The whole session, with the setup and two
+clean builds of both guests, took about 22 minutes, about $0.20. The seal, journal and image id are in
+`contracts/test/examples/fixtures/testnet_real_payment.json`, which the fork test settles an escrow order with.

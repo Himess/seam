@@ -194,7 +194,8 @@ builder with `SEAM_DOCKER_GUESTS=1`, otherwise with the local risc0 toolchain.
   Testnet, with its inclusion data. The K4 catalog re-encrypts one of its notes as a payment to a test key and
   re-anchors it; `crates/seam-payment/src/k4.rs` explains how.
 - `TEST-ONLY_payment_witness.json` is the witness of a real payment of 0.01 TAZ between two disposable Testnet
-  wallets, made on 30 October 2026 for the order of the fork test.
+  wallets, made on 30 October 2026 for the order of the fork test. It was proven on an RTX 4090 on 31 October 2026;
+  its seal is in `contracts/test/examples/fixtures/testnet_real_payment.json`.
 
 **Mocks.** The payment tests use three, in `contracts/test/payment/Mocks.sol`, each labelled MOCK and refused outside a
 local chain (chain id 31337):

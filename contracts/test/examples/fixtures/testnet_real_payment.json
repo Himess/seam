@@ -1,0 +1,9 @@
+{
+  "description": "The real payment of 0.01 TAZ between two disposable Zcash Testnet wallets (30 October 2026; its witness is crates/seam-payment/tests/fixtures/TEST-ONLY_payment_witness.json), proven on an RTX 4090 on 31 October 2026 with the pinned Testnet guest (zkvm/pinned-image-ids.txt): the image id, journal and Groth16 seal `seam` wrote, and the receiver commitment the order's opener committed to (`seam commitment`). proveBlock: a Base Sepolia block where Seam's Testnet relay holds the anchor 4,557,390 with 423,543,202 work on top (tip 4,557,440); finalizeBlock: 3,000 blocks later, tip 4,557,458, past readyHeight 4,557,446.",
+  "receiverCommitment": "0x94a35f10c1b6b65cbf8962a7bd68ee1e4920841b8d529a41b71b036335a08245",
+  "imageId": "0x783f02ced3d94f85578b418b26cb34d7d395d5fe689dd3c35c5c5dfc42add2b3",
+  "journal": "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000077190ad9cb3ded4678815d97036eb20299090a3054460a97eefc4d711f6cc487c200000039458b5c2bea9b8e50aa1e413970a4710aa096b57bd98c977fb2d060f973cb9f94a35f10c1b6b65cbf8962a7bd68ee1e4920841b8d529a41b71b036335a0824500000000000000000000000000000000000000000000000000000000000f4240",
+  "seal": "0x73c457ba2fa4b4397aedfa1016e392e97186218a70a08a529a7330ffba2bf459baa7220830222a2ae7febb1a68361a0fd05e503965bae6668018c773d524cc913dcc08d60f31c07e03b16daad9cccf04470b4685cd3009c0b18432c3a8ca4acd6170bfff2010821e0c9a7197532e355bcfad20e339b8483d5a9305ef45eadc6c1f10421213de3d686030c7939a941a33678b1803f4149491a7494a3f85c817c0336c068a16bf593839b8c028a3f6e2f3044138f9d7531dbca082c99cc761ee67702f613726bed2a0360d77ef7ebbc1daebe973b9b507a4531bf39c8b680b8a50e8b82e712e6b1eb30c50fddd5fe02d1efc6ea508f5ea341cd3203378e039c14a2ba1e437",
+  "proveBlock": 52067520,
+  "finalizeBlock": 52070520
+}
