@@ -18,7 +18,7 @@ You need:
 - a key that holds a little Base Sepolia ETH.
 
 ```sh
-cp .env.example .env && chmod 600 .env          # set RELAY_RPC_URL and RELAYER_PRIVATE_KEY
+cp .env.example .env && chmod 600 .env          # set RELAY_RPC_URL and the key (RELAYER_KEYSTORE is best)
 scripts/relay-feed.sh <relay address> --once    # one batch
 scripts/relay-feed.sh <relay address>           # keeps following; waits 25 s when caught up
 ```
@@ -30,7 +30,8 @@ How the feeder works:
   the headers the relay already has and submits the rest in one transaction.
 - **On a Zcash reorganisation:** if the peers no longer continue from the relay's tip, it steps back up to 20 blocks;
   the relay switches branches by work.
-- **Output:** it prints the relay's tip after each batch. Peer addresses stay in a temporary directory.
+- **Output:** it prints the relay's tip after each batch. Peer addresses stay in a temporary directory, and every URL
+  in an error is replaced, since an RPC URL can carry a key.
 - **Batch size:** use `RELAY_BATCH=8`. Batches of 4 to 8 headers are the cheapest per header: 597,000 gas at 4 and
   645,000 at 16, where memory grows
   ([Zecured's MAINNET.md](https://github.com/Himess/zecured/blob/73de9f909e270e8aea10c2b221905f62a6a4c4df/docs/MAINNET.md#3-a-mainnet-deployment)).
