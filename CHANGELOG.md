@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased
+
+**RISC Zero 3.1.0.** RISC Zero's 3.1.0 release (10 November 2026) fixes soundness issues and retires 3.0: its 3.0
+verifier (selector `0x73c457ba`) is to be emergency-stopped after a delay.
+- `risc0-zkvm` 3.1.0, `risc0-build` 3.0.7 (the guest builder stays `r0.1.97.0`), `risc0-groth16` 3.0.6 (its rzup
+  component 0.2.0, Docker prover `v2026-10-20.1`). Groth16 seals now carry the selector `0xe71e6620`, which the Sepolia
+  and Base Sepolia routers already route.
+- New guests and pinned ids (`zkvm/pinned-image-ids.txt`): `payment-test` `0x41dca8eb…745a`, `payment-main`
+  `0x85bada3e…8d06`. The 3.0.6 ids move to the file's retired list with the deployment that pins them: the Base Sepolia
+  verifier of `seam-base-sepolia.payment-verifier.json` stops verifying when the 3.0 verifier is stopped, and needs a
+  new deployment on the new ids. The real Testnet payment executes on the new guest to the native statement's journal
+  (19,919,378 cycles), and both networks' K4 catalogs have the same outcomes natively and in the zkVM.
+
+**Amount-hidden payment proofs** (journal version 2), for apps that must not publish the amount:
+- The statement (`crates/seam-payment/src/masked.rs`): the app's masked amount M is a public input, the mask
+  `R = u64_be(keccak256("seam/amount-mask/v1" || salt32 || paymentRef32)[0..8])` follows from the salt the receiver
+  commitment binds, and the guest checks `value >= M - R (mod 2^64)`. The journal is version 1's with M in place of the
+  amount: no amount appears in it.
+- The guest `zkvm/guest-masked`, built with the payment guest: `payment-masked-test` `0x482f76d7…bc7f`,
+  `payment-masked-main` `0x6ab49d26…3df1`.
+- `ZcashMaskedPaymentVerifier`: version 1's verifier for journal version 2. Version 1's verifier and guest are
+  unchanged.
+- The CLI: `seam mask` (M from an amount, or the check of a published M; never prints R), `--masked-amount` on
+  `execute`, `prove` and `seal`, `--masked` on `groth16`, `image-id`, `export-elf` and `parity`. `seam parity --masked`
+  runs the masked catalog (around the threshold and across the wrap) natively and in the zkVM; CI and
+  `scripts/gpu-prove.sh` run it.
+
+**The relay deploys on Ethereum Sepolia.** Since Glamsterdam (October 2026) Sepolia charges about 1,560 gas per byte
+of deployed code and caps a transaction at 2^24 gas: the relay needed 19,586,183 gas and couldn't be deployed there.
+`ZcashEquihash.verify` is now a library deployed on its own and the relay compiles through the IR pipeline: 7,788
+bytes of code, 16,327,182 gas to deploy on Sepolia. `ZcashHeaderRelaySize.t.sol` keeps it under the bound. A header
+costs about 15% more (Testnet mean 722,355 gas instead of 625,703), almost all from the IR pipeline; the relays already
+deployed are unchanged.
+
+**The CLI, for tools:**
+- `seam mined` prints whether a payment is mined, and at which height, as one line of JSON, for the transaction an
+  opening or a txid file names. It never prints the txid.
+- `seam witness --txid-file` keeps the txid off the command line.
+
 ## v0.2.0 (2026-10-31)
 
 **Zcash Mainnet, set for NU7:**

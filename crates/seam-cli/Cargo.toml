@@ -27,14 +27,14 @@ tokio = { version = "1", features = ["rt-multi-thread"] }
 # A new wallet's key.
 rand_core = { version = "0.6", features = ["getrandom"] }
 
-# The zkVM subcommands, behind the `zkvm` feature: RISC Zero's host, the version Zecured's tier2 host proved with, and
+# The zkVM subcommands, behind the `zkvm` feature: RISC Zero's host (3.1.0, the release that retired the 3.0 verifier), and
 # the embedded guest. risc0-build does not build on Windows.
 # `disable-dev-mode`: RISC0_DEV_MODE can never make `seam prove` write a fake receipt.
-risc0-zkvm = { version = "=3.0.6", optional = true, features = ["disable-dev-mode"] }
+risc0-zkvm = { version = "=3.1.0", optional = true, features = ["disable-dev-mode"] }
 seam-zkvm-methods = { path = "../../zkvm/methods", optional = true }
 bincode = { version = "1", optional = true }
-# Only for `shrink-wrap` (the `cuda` feature): the version risc0-zkvm 3.0.6 uses.
-risc0-groth16 = { version = "=3.0.5", optional = true, default-features = false }
+# Only for `shrink-wrap` (the `cuda` feature): the version risc0-zkvm 3.1.0 uses.
+risc0-groth16 = { version = "=3.0.6", optional = true, default-features = false }
 
 [features]
 # The Mainnet build: the statement, and with `zkvm` the embedded guest, prove Mainnet payments (the NU6.3 and NU7

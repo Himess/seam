@@ -44,6 +44,7 @@ use zcash_protocol::consensus::BranchId;
 pub mod chain;
 #[cfg(feature = "k4")]
 pub mod k4;
+pub mod masked;
 
 pub use chain::{
     HEADER_LENGTH, Included, Inclusion, MAINNET, MmrStep, NETWORK, NU6_3_BRANCH_ID, NU7_BRANCH_ID, Network, TESTNET,

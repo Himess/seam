@@ -29,6 +29,11 @@ remappings = [
     "forge-std/=lib/forge-std/src/",
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
 ]
+# The relay compiles through the IR pipeline, which with ZcashEquihash deployed as its own library keeps its code under
+# what one transaction can deploy on chains that price code like Sepolia since Glamsterdam
+# (test/relay/ZcashHeaderRelaySize.t.sol). Every other contract keeps the legacy pipeline.
+additional_compiler_profiles = [{ name = "via-ir", via_ir = true }]
+compilation_restrictions = [{ paths = "src/relay/ZcashHeaderRelay.sol", via_ir = true }]
 
 [profile.default.fuzz]
 runs = 256

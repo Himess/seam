@@ -174,9 +174,11 @@ The bullets below say why each line is there, and what else an app needs;
   - `relay()` is the relay you checked, and `networkId()` its network;
   - `imageId()` is the guest pinned for that network in `zkvm/pinned-image-ids.txt`, which anyone can rebuild;
   - `riscZeroVerifier()` is RISC Zero's verifier router on your chain, and `selector()` the Groth16 verifier it
-    dispatches to. On Base Sepolia, Seam's fork test uses the router `0x0b144E07A0826182B6b59788c34b32Bfa86Fb711` and
-    the selector `0x73c457ba` (risc0 3.0); the allowed branch ids are NU7's `0x77190AD9` (and NU6.3's `0x37A5165B` on
-    Mainnet).
+    dispatches to: `0xe71e6620` for guests built on risc0 3.1.0, the ones pinned today. RISC Zero routes the same
+    selectors on Base Sepolia (`0x0b144E07A0826182B6b59788c34b32Bfa86Fb711`) and Ethereum Sepolia
+    (`0x925d8331ddc0a1F0d96E68CF073DFE1d92b69187`). The selector `0x73c457ba` (risc0 3.0) is retiring: RISC Zero stops
+    it after 3.1.0, and a verifier pinned to it stops verifying then. The allowed branch ids are NU7's `0x77190AD9`
+    (and NU6.3's `0x37A5165B` on Mainnet).
 - **One payment, one settlement.** `verify` is stateless: it accepts the same proof any number of times, and one
   payment under many anchors. Bind each `paymentRef` to one obligation and settle it once.
 - **A reference only you use.** Derive `paymentRef` from your chain id, your contract and the obligation: a proof made

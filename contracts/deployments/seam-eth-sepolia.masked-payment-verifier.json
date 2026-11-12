@@ -1,0 +1,13 @@
+{
+  "ZcashMaskedPaymentVerifier": "0x321fFfA506893DA5Ac16c883FA3f32bdE3f1c22E",
+  "branchIds": [
+    1998129881
+  ],
+  "chainId": 11155111,
+  "imageId": "0x482f76d7fcb1a66943e01e7e68eb00215b66d342f7a77cfe49ba499538e1bc7f",
+  "journalVersion": 2,
+  "networkId": "0x9319c941cc6f14fa909d37052da40b85687db2512b320009fcf27cb3815e1e39",
+  "relay": "0xc85AC30c388C4eD645a4833Ebaa69EEFbB501235",
+  "riscZeroVerifier": "0x925d8331ddc0a1F0d96E68CF073DFE1d92b69187",
+  "selector": "0xe71e6620"
+}

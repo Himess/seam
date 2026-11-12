@@ -36,6 +36,7 @@ jobs:
           forge inspect src/relay/ZcashHeaderRelay.sol:ZcashHeaderRelay abi --json > ../abi/ZcashHeaderRelay.json
           forge inspect src/interfaces/IZcashHeaderRelayReader.sol:IZcashHeaderRelayReader abi --json > ../abi/IZcashHeaderRelayReader.json
           forge inspect src/payment/IZcashPaymentVerifier.sol:IZcashPaymentVerifier abi --json > ../abi/IZcashPaymentVerifier.json
+          forge inspect src/payment/IZcashMaskedPaymentVerifier.sol:IZcashMaskedPaymentVerifier abi --json > ../abi/IZcashMaskedPaymentVerifier.json
           git diff --exit-code -- ../abi
       - name: The reader builds with solc 0.8.0, the example with solc 0.8.4
         run: |

@@ -60,8 +60,11 @@ library ZcashEquihash {
     bytes32 internal constant H_INIT_1 = 0xd182e6ad7f520e511f6c3e2b8c68059b31de2088c389ec48b1217e1310cde05b;
 
     /// @notice Checks the Equihash solution of a serialized Zcash block header.
+    /// @dev Public, so the library is deployed on its own and the relay calls it (DELEGATECALL): the relay alone then
+    ///      fits in one transaction on chains that price code like Sepolia since Glamsterdam
+    ///      (test/relay/ZcashHeaderRelaySize.t.sol). The check itself is unchanged.
     /// @param header 1487 bytes: 140-byte prefix || compactSize(1344) = fd 40 05 || 1344-byte solution.
-    function verify(bytes memory header) internal view returns (Result) {
+    function verify(bytes memory header) public view returns (Result) {
         if (header.length != HEADER_LENGTH) return Result.InvalidEncoding;
         if (uint8(header[140]) != 0xfd || uint8(header[141]) != 0x40 || uint8(header[142]) != 0x05) {
             return Result.InvalidEncoding;

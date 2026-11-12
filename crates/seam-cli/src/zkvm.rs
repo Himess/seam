@@ -10,6 +10,7 @@
 //! seam image-id                             the guest's image id
 //! seam export-elf <guest.bin>               the guest, to pin it
 //! seam parity <public-tx.json>              K4: each change, the same outcome natively and in the executor
+//! seam parity --masked <public-tx.json>     the amount-hidden guest's catalog, natively and in the executor
 //! seam p254 | shrink-wrap                   with the `cuda` feature: the Groth16 wrap in two processes
 //! ```
 //!
@@ -31,8 +32,9 @@ use std::{
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use clap::Subcommand;
 use risc0_zkvm::{ExecutorEnv, ProverOpts, Receipt, compute_image_id, default_executor, default_prover, sha::Digest};
+use seam_payment::masked::{MaskedPaymentInput, amount_mask, verify_masked};
 use seam_payment::{JOURNAL_LENGTH, NETWORK, PaymentWitness, k4, verify};
-use seam_zkvm_methods::{GUEST_NETWORK, PAYMENT_ELF, PAYMENT_ID};
+use seam_zkvm_methods::{GUEST_NETWORK, PAYMENT_ELF, PAYMENT_ID, PAYMENT_MASKED_ELF, PAYMENT_MASKED_ID};
 
 #[derive(Subcommand)]
 pub enum ZkvmCommand {
@@ -40,6 +42,9 @@ pub enum ZkvmCommand {
     Execute {
         /// The witness (JSON), or - for standard input.
         witness: String,
+        /// The app's masked amount M: runs the amount-hidden guest (journal version 2) instead.
+        #[arg(long)]
+        masked_amount: Option<u64>,
     },
     /// Proves the guest on a witness: a succinct (STARK) receipt, verified. Segments of 2^SEAM_SEGMENT_PO2 cycles: 18
     /// by default (about 3 GB of memory), 20 on a 24 GB GPU.
@@ -47,60 +52,115 @@ pub enum ZkvmCommand {
         /// The witness (JSON), or - for standard input.
         witness: String,
         receipt: PathBuf,
+        /// The app's masked amount M: proves the amount-hidden guest instead.
+        #[arg(long)]
+        masked_amount: Option<u64>,
     },
     /// Wraps a succinct receipt in Groth16 (x86 with Docker, or natively with the `cuda` feature) and writes seal.json.
-    Groth16 { receipt: PathBuf, seal: PathBuf },
+    Groth16 {
+        receipt: PathBuf,
+        seal: PathBuf,
+        /// The receipt is of the amount-hidden guest.
+        #[arg(long)]
+        masked: bool,
+    },
     /// Proves a witness and wraps the receipt in Groth16 in one run: seal.json straight from a witness.
     Seal {
         /// The witness (JSON), or - for standard input.
         witness: String,
         seal: PathBuf,
+        /// The app's masked amount M: proves the amount-hidden guest instead.
+        #[arg(long)]
+        masked_amount: Option<u64>,
     },
     /// Prints the guest's image id.
-    ImageId,
+    ImageId {
+        /// The amount-hidden guest's.
+        #[arg(long)]
+        masked: bool,
+    },
     /// Writes the guest's ELF, to pin it.
-    ExportElf { out: PathBuf },
-    /// K4: every change of seam-payment's catalog has its outcome natively and the same outcome in the executor.
+    ExportElf {
+        out: PathBuf,
+        /// The amount-hidden guest's.
+        #[arg(long)]
+        masked: bool,
+    },
+    /// K4: every change of seam-payment's catalog has its outcome natively and the same outcome in the executor. With
+    /// --masked, the amount-hidden guest's catalog instead: masked amounts around the threshold and across the wrap.
     Parity {
         /// A public transaction (crates/seam-payment/tests/fixtures/TEST-ONLY_testnet_ironwood_tx.json), or - for
         /// standard input: the base is the synthetic witness seam-payment builds from it, the one the catalog's
         /// outcomes are written for.
         public_tx: String,
+        /// Runs the amount-hidden guest's catalog.
+        #[arg(long)]
+        masked: bool,
     },
     /// The first half of groth16, in its own process: the receipt's Poseidon254 identity receipt.
     #[cfg(feature = "cuda")]
-    P254 { receipt: PathBuf, out: PathBuf },
+    P254 {
+        receipt: PathBuf,
+        out: PathBuf,
+        #[arg(long)]
+        masked: bool,
+    },
     /// The second half of groth16: shrinks and wraps the identity receipt in Groth16, and writes seal.json.
     #[cfg(feature = "cuda")]
     ShrinkWrap {
         p254: PathBuf,
         receipt: PathBuf,
         seal: PathBuf,
+        #[arg(long)]
+        masked: bool,
     },
 }
 
-/// The guest every command runs: the pinned file named by `SEAM_PAYMENT_ELF`, or the one embedded in this binary.
+impl ZkvmCommand {
+    /// Whether the command runs the amount-hidden guest.
+    fn masked(&self) -> bool {
+        match self {
+            Self::Execute { masked_amount, .. }
+            | Self::Prove { masked_amount, .. }
+            | Self::Seal { masked_amount, .. } => masked_amount.is_some(),
+            Self::Groth16 { masked, .. }
+            | Self::ImageId { masked }
+            | Self::ExportElf { masked, .. }
+            | Self::Parity { masked, .. } => *masked,
+            #[cfg(feature = "cuda")]
+            Self::P254 { masked, .. } | Self::ShrinkWrap { masked, .. } => *masked,
+        }
+    }
+}
+
+/// The guest a command runs: the payment guest, or the amount-hidden one, each from the pinned file its variable names
+/// (`SEAM_PAYMENT_ELF`, `SEAM_PAYMENT_MASKED_ELF`) or embedded in this binary.
 struct Guest {
     elf: Vec<u8>,
     id: Digest,
 }
 
 impl Guest {
-    fn load() -> Result<Self> {
-        match std::env::var_os("SEAM_PAYMENT_ELF") {
+    fn load(masked: bool) -> Result<Self> {
+        let (var, embedded_elf, embedded_id) = if masked {
+            ("SEAM_PAYMENT_MASKED_ELF", PAYMENT_MASKED_ELF, PAYMENT_MASKED_ID)
+        } else {
+            ("SEAM_PAYMENT_ELF", PAYMENT_ELF, PAYMENT_ID)
+        };
+        match std::env::var_os(var) {
             Some(path) => {
-                let elf = std::fs::read(&path).context("read SEAM_PAYMENT_ELF")?;
-                let id = compute_image_id(&elf).context("SEAM_PAYMENT_ELF is not a guest program")?;
+                let elf = std::fs::read(&path).with_context(|| format!("read {var}"))?;
+                let id = compute_image_id(&elf).with_context(|| format!("{var} is not a guest program"))?;
                 Ok(Self { elf, id })
             }
             // A build without its guest (RISC0_SKIP_BUILD, where RISC Zero cannot build it) proves nothing and names no
             // image id until a guest is pinned.
-            None if PAYMENT_ELF.is_empty() => {
-                bail!("this build embeds no guest: set SEAM_PAYMENT_ELF to the pinned guest")
+            None if embedded_elf.is_empty() => {
+                bail!("this build embeds no guest: set {var} to the pinned guest")
             }
             None => Ok(Self {
-                elf: PAYMENT_ELF.to_vec(),
-                id: Digest::from(PAYMENT_ID),
+                elf: embedded_elf.to_vec(),
+                id: Digest::from(embedded_id),
             }),
         }
     }
@@ -122,13 +182,27 @@ fn read_witness(path: &str) -> Result<Vec<u8>> {
 }
 
 /// The witness at `path`, checked natively: its bincode frame (the guest's input) and the journal the guest must
-/// commit.
-fn load_witness(path: &str) -> Result<(Vec<u8>, Vec<u8>)> {
+/// commit. With a masked amount M, the frame is the amount-hidden guest's input and the journal version 2.
+fn load_witness(path: &str, masked_amount: Option<u64>) -> Result<(Vec<u8>, Vec<u8>)> {
     let witness: PaymentWitness = serde_json::from_slice(&read_witness(path)?).context("a payment witness (JSON)")?;
-    let journal = verify(&witness)
-        .map_err(|e| anyhow!("the statement refuses the witness natively: {e:?}"))?
-        .abi_encode();
-    Ok((bincode::serialize(&witness)?, journal))
+    match masked_amount {
+        None => {
+            let journal = verify(&witness)
+                .map_err(|e| anyhow!("the statement refuses the witness natively: {e:?}"))?
+                .abi_encode();
+            Ok((bincode::serialize(&witness)?, journal))
+        }
+        Some(m) => {
+            let input = MaskedPaymentInput {
+                witness,
+                masked_amount: m,
+            };
+            let journal = verify_masked(&input)
+                .map_err(|e| anyhow!("the amount-hidden statement refuses the input natively: {e:?}"))?
+                .abi_encode();
+            Ok((bincode::serialize(&input)?, journal))
+        }
+    }
 }
 
 fn env_for_frame(frame: &[u8], po2: Option<u32>) -> Result<ExecutorEnv<'static>> {
@@ -241,6 +315,62 @@ fn parity(guest: &Guest, input: &str) -> Result<()> {
     Ok(())
 }
 
+/// The amount-hidden guest's catalog on the synthetic witness of the public transaction at `input`: each masked amount
+/// has its outcome natively and the same outcome in the executor, where a refusal is the guest's panic with the
+/// statement's own error. Z is the note's value and R the mask of the witness's salt and paymentRef.
+fn parity_masked(guest: &Guest, input: &str) -> Result<()> {
+    let public_tx =
+        serde_json::from_slice::<k4::PublicTx>(&read_witness(input)?).context("a public transaction (JSON)")?;
+    let base = k4::synthesize(&public_tx);
+    let real = verify(&base).map_err(|e| anyhow!("the base witness does not prove: {e:?}"))?;
+    let (z, r) = (real.zatoshi, amount_mask(&base.salt, &real.payment_ref));
+    // The commitment is an output of the statement (the app checks it), so another salt is caught here by its mask:
+    // M was made with the witness's R, and M - R' lands far from Z.
+    let mut other_salt = base.clone();
+    other_salt.salt[0] ^= 1;
+    // (name, witness, M, whether it proves)
+    let cases: [(&str, &PaymentWitness, u64, bool); 7] = [
+        ("M = Z + R: the note's exact value", &base, z.wrapping_add(r), true),
+        ("M = Z + R - 1: a threshold under the value", &base, z.wrapping_add(r).wrapping_sub(1), true),
+        ("M = R: threshold zero", &base, r, true),
+        ("M = Z + R + 1: one zatoshi short", &base, z.wrapping_add(r).wrapping_add(1), false),
+        ("M = R - 1: the threshold wraps to 2^64 - 1", &base, r.wrapping_sub(1), false),
+        ("M = Z + R + 2^63: far above the value", &base, z.wrapping_add(r).wrapping_add(1 << 63), false),
+        ("another salt: another R, so M - R misses Z", &other_salt, z.wrapping_add(r), false),
+    ];
+    let mut failures = 0;
+    for (name, w, m, proves) in cases {
+        let input = MaskedPaymentInput {
+            witness: w.clone(),
+            masked_amount: m,
+        };
+        let native = verify_masked(&input);
+        let started = Instant::now();
+        let executed = default_executor().execute(env_for_frame(&bincode::serialize(&input)?, None)?, &guest.elf);
+        let elapsed = started.elapsed();
+        let as_expected = native.is_ok() == proves;
+        let same_zkvm = match (&native, &executed) {
+            (Err(e), Err(x)) => {
+                let (text, needle) = (format!("{x:#}"), format!("not a valid masked payment: {e:?}"));
+                text.match_indices(&needle)
+                    .any(|(at, _)| !text[at + needle.len()..].starts_with(|c: char| c.is_ascii_alphanumeric()))
+            }
+            (Ok(j), Ok(session)) => session.journal.bytes == j.abi_encode(),
+            _ => false,
+        };
+        let ok = |b: bool| if b { "ok" } else { "DIFFERS" };
+        let expected = if proves { "proves" } else { "refused" };
+        println!("{name:<50} {expected:<8} native {} zkVM {} ({elapsed:.1?})", ok(as_expected), ok(same_zkvm));
+        failures += usize::from(!(as_expected && same_zkvm));
+    }
+    ensure!(
+        failures == 0,
+        "{failures} masked amounts did not have their outcome natively and the same in the zkVM"
+    );
+    println!("every masked amount has its outcome natively and the same in the zkVM");
+    Ok(())
+}
+
 /// A witness never leaves this machine (docs/PAYMENTS.md § 5): risc0-zkvm's `default_prover` would hand it to Bonsai,
 /// RISC Zero's remote prover, when the environment asks for it, so such an environment is refused.
 fn refuse_remote_proving() -> Result<()> {
@@ -265,10 +395,10 @@ pub fn run(command: ZkvmCommand) -> Result<()> {
         NETWORK.name
     );
     refuse_remote_proving()?;
-    let guest = Guest::load()?;
+    let guest = Guest::load(command.masked())?;
     match command {
-        ZkvmCommand::ImageId => println!("0x{}", hex::encode(guest.image_id())),
-        ZkvmCommand::ExportElf { out } => {
+        ZkvmCommand::ImageId { .. } => println!("0x{}", hex::encode(guest.image_id())),
+        ZkvmCommand::ExportElf { out, .. } => {
             std::fs::write(&out, &guest.elf).with_context(|| format!("write {}", out.display()))?;
             println!(
                 "guest 0x{} ({} network) written to {}",
@@ -277,9 +407,9 @@ pub fn run(command: ZkvmCommand) -> Result<()> {
                 out.display()
             );
         }
-        ZkvmCommand::Execute { witness } => {
+        ZkvmCommand::Execute { witness, masked_amount } => {
             println!("image id 0x{} ({} network)", hex::encode(guest.image_id()), NETWORK.name);
-            let (frame, journal) = load_witness(&witness)?;
+            let (frame, journal) = load_witness(&witness, masked_amount)?;
             let started = Instant::now();
             let session = default_executor().execute(env_for_frame(&frame, None)?, &guest.elf)?;
             ensure!(session.journal.bytes == journal, "the journal differs from the native statement's");
@@ -291,15 +421,19 @@ pub fn run(command: ZkvmCommand) -> Result<()> {
             );
             println!("journal 0x{}", hex::encode(&journal));
         }
-        ZkvmCommand::Prove { witness, receipt } => {
+        ZkvmCommand::Prove {
+            witness,
+            receipt,
+            masked_amount,
+        } => {
             println!("image id 0x{} ({} network)", hex::encode(guest.image_id()), NETWORK.name);
-            let (frame, journal) = load_witness(&witness)?;
+            let (frame, journal) = load_witness(&witness, masked_amount)?;
             let proven = prove_succinct(&guest, &frame, &journal)?;
             std::fs::write(&receipt, bincode::serialize(&proven)?)
                 .with_context(|| format!("write {}", receipt.display()))?;
             println!("receipt written to {}", receipt.display());
         }
-        ZkvmCommand::Groth16 { receipt, seal } => {
+        ZkvmCommand::Groth16 { receipt, seal, .. } => {
             println!("image id 0x{} ({} network)", hex::encode(guest.image_id()), NETWORK.name);
             let proven: Receipt =
                 bincode::deserialize(&std::fs::read(&receipt).with_context(|| format!("read {}", receipt.display()))?)?;
@@ -307,22 +441,30 @@ pub fn run(command: ZkvmCommand) -> Result<()> {
             write_seal(&guest, &seal, &proven.journal.bytes, &bytes)?;
             println!("seal written to {}", seal.display());
         }
-        ZkvmCommand::Seal { witness, seal } => {
+        ZkvmCommand::Seal {
+            witness,
+            seal,
+            masked_amount,
+        } => {
             println!("image id 0x{} ({} network)", hex::encode(guest.image_id()), NETWORK.name);
-            let (frame, journal) = load_witness(&witness)?;
+            let (frame, journal) = load_witness(&witness, masked_amount)?;
             let proven = prove_succinct(&guest, &frame, &journal)?;
             let bytes = groth16_seal(&guest, &proven)?;
             write_seal(&guest, &seal, &journal, &bytes)?;
             println!("seal written to {}", seal.display());
         }
-        ZkvmCommand::Parity { public_tx } => {
+        ZkvmCommand::Parity { public_tx, masked } => {
             println!("image id 0x{} ({} network)", hex::encode(guest.image_id()), NETWORK.name);
-            parity(&guest, &public_tx)?;
+            if masked {
+                parity_masked(&guest, &public_tx)?;
+            } else {
+                parity(&guest, &public_tx)?;
+            }
         }
         // `groth16` in two processes, as risc0-zkvm's succinct_to_groth16 chains them: the Poseidon254 identity
         // receipt, then its Groth16 wrap. Run apart, each half can be checked on its own.
         #[cfg(feature = "cuda")]
-        ZkvmCommand::P254 { receipt, out } => {
+        ZkvmCommand::P254 { receipt, out, .. } => {
             let proven: Receipt = bincode::deserialize(&std::fs::read(&receipt)?)?;
             proven.verify(guest.id).context("the receipt is not a proof of this guest")?;
             let started = Instant::now();
@@ -331,7 +473,9 @@ pub fn run(command: ZkvmCommand) -> Result<()> {
             println!("identity_p254 receipt in {:.1?}, written to {}", started.elapsed(), out.display());
         }
         #[cfg(feature = "cuda")]
-        ZkvmCommand::ShrinkWrap { p254, receipt, seal } => {
+        ZkvmCommand::ShrinkWrap {
+            p254, receipt, seal, ..
+        } => {
             use risc0_zkvm::sha::Digestible;
             let p254: risc0_zkvm::SuccinctReceipt<risc0_zkvm::ReceiptClaim> =
                 bincode::deserialize(&std::fs::read(&p254)?)?;

@@ -7,11 +7,11 @@ license.workspace = true
 publish = false
 
 [build-dependencies]
-risc0-build = "=3.0.6"
+risc0-build = "=3.0.7"
 
 [features]
 # Builds the guest for Mainnet (the network is a build parameter): build.rs passes it on to the guest.
 mainnet = []
 
 [package.metadata.risc0]
-methods = ["../guest"]
+methods = ["../guest", "../guest-masked"]
