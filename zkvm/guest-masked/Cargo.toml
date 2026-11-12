@@ -1,0 +1,25 @@
+[package]
+name = "payment-masked"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+# Its own workspace and Cargo.lock: risc0-build compiles the guest alone, for the zkVM target. The same dependencies as
+# the payment guest (zkvm/guest): only its entry point differs.
+[workspace]
+
+[dependencies]
+risc0-zkvm = { version = "=3.1.0", default-features = false, features = ["std"] }
+seam-payment = { path = "../../crates/seam-payment" }
+bincode = "1"
+
+[features]
+# The network is a build parameter, as for the payment guest.
+mainnet = ["seam-payment/mainnet"]
+
+[profile.release]
+lto = true
+
+[patch.crates-io]
+pasta_curves = { path = "../vendor/pasta_curves" }

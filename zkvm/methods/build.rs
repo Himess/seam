@@ -31,5 +31,7 @@ fn main() {
         options.use_docker(docker);
     }
     let options = options.build().expect("guest options");
-    embed_methods_with_options(HashMap::from([("payment", options)]));
+    // The payment guest and the amount-hidden one (zkvm/guest-masked), built the same way: each has its own image id
+    // (`payment-<network>`, `payment-masked-<network>`).
+    embed_methods_with_options(HashMap::from([("payment", options.clone()), ("payment-masked", options)]));
 }

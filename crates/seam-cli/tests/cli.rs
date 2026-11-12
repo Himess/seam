@@ -233,3 +233,42 @@ fn commitment_never_replaces_a_salt() {
     assert_eq!(std::fs::read_to_string(&salt).unwrap(), written);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// `seam mined` reads the txid from an opening or a txid file, one of them, and refuses a file that holds no txid
+/// before it reaches the network; the txid is never echoed.
+#[test]
+fn mined_needs_exactly_one_txid_source() {
+    let neither = seam(&["mined"]);
+    assert!(!neither.status.success() && stderr(&neither).contains("--opening"));
+    let both = seam(&["mined", "--opening", "o.json", "--txid-file", "t"]);
+    assert!(!both.status.success() && stderr(&both).contains("cannot be used with"));
+    let dir = std::env::temp_dir().join(format!("seam-mined-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let bad = dir.join("txid");
+    std::fs::write(&bad, "not-a-txid-but-a-secret").unwrap();
+    let out = seam(&["mined", "--txid-file", bad.to_str().unwrap()]);
+    assert!(!out.status.success() && stderr(&out).contains("64 hex digits"));
+    assert!(!stderr(&out).contains("not-a-txid-but-a-secret") && out.stdout.is_empty());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// `seam witness` takes the txid from --txid or --txid-file, never both.
+#[test]
+fn witness_takes_one_txid_source() {
+    let both = seam(&[
+        "witness",
+        "--txid",
+        REF,
+        "--txid-file",
+        "t",
+        "--ufvk-file",
+        "k",
+        "--salt-file",
+        "s",
+        "--anchor",
+        "1",
+        "--out",
+        "w.json",
+    ]);
+    assert!(!both.status.success() && stderr(&both).contains("cannot be used with"));
+}

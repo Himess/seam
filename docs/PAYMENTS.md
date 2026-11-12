@@ -172,3 +172,28 @@ clean builds of both guests, took about 22 minutes, about $0.20. The seal, journ
 `contracts/test/examples/fixtures/testnet_real_payment.json`, which the fork test settles an escrow order with. The
 witness proven there is the TEST-ONLY fixture of two disposable wallets; a real witness stays on a machine its owner
 controls (§ 5).
+
+The measurements above are of risc0 3.0.6, whose verifier RISC Zero retires after 3.1.0. On the 3.1.0 guest the same
+witness executes in 19,919,378 cycles (21 segments); a new GPU proof under 3.1.0 is still to be measured.
+
+## 9. Hiding the amount (journal version 2)
+
+Some apps must not publish what was paid: an order book whose sizes are encrypted, a payroll. They consume the
+amount-hidden proof instead, from its own guest (`payment-masked-test`, `payment-masked-main`) and its own verifier
+(`ZcashMaskedPaymentVerifier`). Everything in § 1 holds, with one change: the journal states a masked amount M where
+version 1 states the amount.
+
+- **The mask.** `R = u64_be(keccak256("seam/amount-mask/v1" || salt32 || paymentRef32)[0..8])`, from the salt the
+  receiver commitment binds and the app's reference. A salt reused by mistake still gives each payment its own mask.
+- **The masked amount.** The app publishes `M = Z + R (mod 2^64)` for the amount Z it expects, and requires the
+  journal's M to be its own. The guest proves `value >= M - R (mod 2^64)` and states M, never the value.
+- **Why it holds.** The commitment binds the salt, the salt and the reference fix R, and the app checks M: a valid proof
+  implies a payment of at least Z. To anyone without the salt, M is uniform: it says nothing about Z.
+- **The payer's check.** Before paying, the payer checks that a published M is its own amount masked with the
+  receiver's salt: `seam mask --salt-file <salt> --ref <paymentRef> --zat <Z> --masked <M>`. A wrong mask can then only
+  make the payer refuse; it can never make it underpay. An app that takes the mask from the receiving side (as an
+  encrypted input, say) needs no other check: a wrong one only hurts that side.
+- **Proving.** `seam seal <witness.json> <seal.json> --masked-amount <M>`, with `SEAM_PAYMENT_MASKED_ELF` naming the
+  pinned guest. The witness is version 1's: M is given when proving.
+- **What it doesn't hide.** The payment's timing, the anchor, the reference and the commitment are public as in
+  version 1; a party that knows the salt (the receiver, whoever proves) learns Z from M.

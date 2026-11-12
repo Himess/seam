@@ -18,8 +18,11 @@ use crate::{memo::parse_ref, read_secret_text, write_private};
 #[derive(Args)]
 pub struct WitnessArgs {
     /// The payment transaction's id, as block explorers show it; an opening written by `seam pay` carries it.
-    #[arg(long, required_unless_present = "opening")]
+    #[arg(long, required_unless_present_any = ["opening", "txid_file"], conflicts_with = "txid_file")]
     txid: Option<String>,
+    /// A file with the payment transaction's id: --txid, kept off the command line.
+    #[arg(long)]
+    txid_file: Option<PathBuf>,
     /// A JSON file with the payer's opening of the payment note: {action_index, receiver (hex), value, rseed (hex)}.
     #[arg(long, required_unless_present = "ufvk_file", conflicts_with = "ufvk_file")]
     opening: Option<PathBuf>,
@@ -81,13 +84,18 @@ pub async fn run(args: WitnessArgs) -> Result<()> {
         Source::ViewingKey(_) => None,
     };
     let parse = |id: &str| TxId::from_hex(id.trim()).context("a txid: 64 hex digits, as block explorers show it");
-    let txid = match (args.txid.as_deref().map(parse).transpose()?, recorded.as_deref().map(parse).transpose()?) {
+    let given = match (&args.txid, &args.txid_file) {
+        (Some(id), _) => Some(id.clone()),
+        (None, Some(path)) => Some(read_secret_text(path)?),
+        (None, None) => None,
+    };
+    let txid = match (given.as_deref().map(parse).transpose()?, recorded.as_deref().map(parse).transpose()?) {
         (Some(given), Some(kept)) => {
             ensure!(given == kept, "--txid is not the transaction the opening was kept for");
             given
         }
         (Some(id), None) | (None, Some(id)) => id,
-        (None, None) => bail!("give --txid: the opening does not name its transaction"),
+        (None, None) => bail!("give --txid or --txid-file: the opening does not name its transaction"),
     };
     let payment_ref = args.payment_ref.as_deref().map(parse_ref).transpose().context("--payment-ref")?;
     let commitment = args.receiver_commitment.as_deref().map(parse_ref).transpose().context("--receiver-commitment")?;

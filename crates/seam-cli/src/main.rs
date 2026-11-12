@@ -9,8 +9,11 @@
 //!              --out <witness.json>                            a witness, checked with the statement
 //! seam pay --wallet <file> --to <ua> --zat <n> --ref <paymentRef> --opening <out.json>
 //!                                                              a Testnet payment from a disposable wallet
+//! seam mask --salt-file <file> --ref <paymentRef> [--zat <n>] [--masked <M>]
+//!                                                              an amount-hidden payment's masked amount M
 //! seam execute | prove | groth16 | seal | image-id | export-elf | parity
-//!                                                              with the `zkvm` feature: the RISC Zero guest
+//!                                                              with the `zkvm` feature: the RISC Zero guest; with
+//!                                                              --masked-amount (or --masked), the amount-hidden guest
 //! ```
 //!
 //! Secrets (an opening, a viewing key, a salt) come from files, never from the command line. `seam` prints counts,
@@ -25,7 +28,9 @@ use clap::{Parser, Subcommand};
 use seam_chain::ZcashNetwork;
 
 mod commitment;
+mod mask;
 mod memo;
+mod mined;
 mod pay;
 mod witness;
 #[cfg(feature = "zkvm")]
@@ -55,6 +60,12 @@ enum Command {
     /// Pays from a disposable Testnet wallet: one Ironwood note with the memo of a paymentRef and `ovk = None`, its
     /// opening and txid kept in a file. Creates the wallet with --new-wallet.
     Pay(pay::PayArgs),
+    /// The masked amount M = Z + R of an amount-hidden payment, or the check of a published M against an amount,
+    /// from the receiver commitment's salt file and the paymentRef. Never prints R.
+    Mask(mask::MaskArgs),
+    /// Whether a payment is mined, and at which height, as JSON, for the transaction an opening or a txid file names.
+    /// Never prints the txid.
+    Mined(mined::MinedArgs),
     #[cfg(feature = "zkvm")]
     #[command(flatten)]
     Zkvm(zkvm::ZkvmCommand),
@@ -150,7 +161,13 @@ fn run(cli: Cli) -> Result<()> {
             .build()
             .context("start an async runtime")?
             .block_on(witness::run(args)),
+        Command::Mined(args) => tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .context("start an async runtime")?
+            .block_on(mined::run(args)),
         Command::Pay(args) => pay::run(args),
+        Command::Mask(args) => mask::run(args),
         // Outside any async runtime: RISC Zero's provers may start their own.
         #[cfg(feature = "zkvm")]
         Command::Zkvm(command) => zkvm::run(command),

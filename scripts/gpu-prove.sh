@@ -6,17 +6,20 @@
 # Zecured's scripts/gpu-prove.sh (73de9f909e270e8aea10c2b221905f62a6a4c4df).
 #
 #   scripts/gpu-prove.sh setup                         # once: CUDA 12.8 if needed, Rust, rzup, seam with `cuda`
-#   scripts/gpu-prove.sh guests <out-dir>              # both guests, built in RISC Zero's guest-builder image: their
+#   scripts/gpu-prove.sh guests <out-dir>              # the four guests (the payment guest and the amount-hidden one,
+#                                                      # per network), built in RISC Zero's guest-builder image: their
 #                                                      # ELFs, image ids and lines for zkvm/pinned-image-ids.txt, and
-#                                                      # each guest's K4 parity with the native statement
+#                                                      # each guest's parity with the native statement
 #   scripts/gpu-prove.sh prove <witness.json> <out-dir>  # cycles, the succinct receipt on the GPU, the Groth16 seal
 #   scripts/gpu-prove.sh wipe <witness.json> <out-dir>   # removes the witness and the receipts; keeps seal.json
 #
 # `prove` runs the guest SEAM_PAYMENT_ELF names (the pinned ELF `guests` exports), so the receipt is for the pinned
-# image id. The STARK is proven by seam built with `cuda`. The Groth16 wrap runs in Docker, through the seam that
-# `guests` built without `cuda`: risc0-groth16 3.0.5's CUDA prover failed on Zecured's receipts, and Docker wrapped
-# them on the same kind of machine on 27 October 2026. GROTH16=cuda tries the CUDA prover instead (`p254`, then
-# `shrink-wrap`). Testnet only: a Mainnet prover builds both with the `mainnet` feature.
+# image id; with SEAM_MASKED_AMOUNT=<M>, the app's published masked amount, it runs the amount-hidden guest
+# SEAM_PAYMENT_MASKED_ELF names instead. The STARK is proven by seam built with `cuda`. The Groth16 wrap runs in Docker,
+# through the seam that `guests` built without `cuda`: risc0-groth16 3.0.5's CUDA prover failed on Zecured's receipts,
+# and Docker wrapped them on the same kind of machine on 27 October 2026; 3.0.6's (risc0 3.1.0) is untried. GROTH16=cuda
+# tries the CUDA prover instead (`p254`, then `shrink-wrap`). Testnet only: a Mainnet prover builds both with the
+# `mainnet` feature.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -34,20 +37,21 @@ docker_seam() {
 
 setup() {
   nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv
-  command -v nvcc >/dev/null || { echo "nvcc not found: use a CUDA devel image" >&2; exit 1; }
   command -v docker >/dev/null || { echo "docker not found: the guests and the Groth16 wrap need it" >&2; exit 1; }
-  nvcc --version | tail -1
-  # risc0 3.0's kernels do not compile against CUDA 13's headers (CCCL's driver_api.h): build with a CUDA 12 compiler
-  # next to the image's toolkit. The driver runs code built for 12.x.
-  if nvcc --version | grep -q "release 13"; then
+  # risc0 3.0's kernels did not compile against CUDA 13's headers (CCCL's driver_api.h): build with a CUDA 12 compiler
+  # next to the image's toolkit. The driver runs code built for 12.x. A VM with the driver but no toolkit (vast.ai's
+  # Ubuntu 22.04 VM on 12 November 2026, where 3.1.0 built and proved this way) gets the same 12.8 compiler, from
+  # NVIDIA's apt repository, which must be configured (cuda-keyring).
+  if ! command -v nvcc >/dev/null || nvcc --version | grep -q "release 13"; then
     apt-get update -qq
     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq cuda-nvcc-12-8 cuda-cudart-dev-12-8 cuda-cccl-12-8 \
       cuda-driver-dev-12-8 cuda-nvrtc-dev-12-8
     # Every build script must see 12.8: some link through /usr/local/cuda (cust), so it points there too.
-    update-alternatives --set cuda /usr/local/cuda-12.8
+    update-alternatives --set cuda /usr/local/cuda-12.8 2>/dev/null || ln -sfn /usr/local/cuda-12.8 /usr/local/cuda
     export PATH="/usr/local/cuda-12.8/bin:$PATH" CUDA_PATH=/usr/local/cuda-12.8 CUDA_HOME=/usr/local/cuda-12.8 \
       CUDA_ROOT=/usr/local/cuda-12.8
   fi
+  nvcc --version | tail -1
   # circom-witnesscalc (in the Groth16 prover) needs libclang for bindgen and protoc for its build script.
   if ! command -v clang >/dev/null || ! command -v protoc >/dev/null; then
     apt-get update -qq
@@ -61,10 +65,10 @@ setup() {
     curl --proto '=https' --tlsv1.2 -sSfL https://risczero.com/install | bash
   fi
   # risc0-build asks rzup for the guest toolchain's version even when Docker builds the guest; r0vm runs the executor
-  # and the Docker wrap of the builds without `cuda`; risc0-groth16 3.0.5 looks for version 0.1.0 of its component.
+  # and the Docker wrap of the builds without `cuda`; risc0-groth16 3.0.6 looks for version 0.2.0 of its component.
   rzup install rust 1.97.0
-  rzup install r0vm 3.0.6
-  rzup install risc0-groth16 0.1.0
+  rzup install r0vm 3.1.0
+  rzup install risc0-groth16 0.2.0
   cd "$ROOT"
   # No guest (the pinned ELF) and no LTO: the prover is GPU-bound, the build is not.
   RISC0_SKIP_BUILD=1 CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_DEBUG=0 \
@@ -83,18 +87,32 @@ guests() {
       cargo build --release --locked -p seam-cli --features "$features"
     seam="$(docker_seam "$net")"
     "$seam" export-elf "$out/payment-$net.bin"
-    echo "payment-$net    $("$seam" image-id)  $(sha256sum "$out/payment-$net.bin" | cut -d' ' -f1)" \
-      | tee -a "$out/pinned-image-ids.txt"
+    "$seam" export-elf --masked "$out/payment-masked-$net.bin"
+    {
+      echo "payment-$net    $("$seam" image-id)  $(sha256sum "$out/payment-$net.bin" | cut -d' ' -f1)"
+      echo "payment-masked-$net    $("$seam" image-id --masked)  $(sha256sum "$out/payment-masked-$net.bin" | cut -d' ' -f1)"
+    } | tee -a "$out/pinned-image-ids.txt"
   done
   for net in test main; do
     "$(docker_seam "$net")" parity crates/seam-payment/tests/fixtures/TEST-ONLY_testnet_ironwood_tx.json \
       | tee "$out/parity-$net.txt"
+    "$(docker_seam "$net")" parity --masked crates/seam-payment/tests/fixtures/TEST-ONLY_testnet_ironwood_tx.json \
+      | tee "$out/parity-masked-$net.txt"
   done
 }
 
 prove() {
   local witness="$1" out="$2" started
-  : "${SEAM_PAYMENT_ELF:?SEAM_PAYMENT_ELF: the pinned payment guest}"
+  # The amount-hidden guest takes the masked amount where a command runs a witness, and --masked where it reads a
+  # receipt or an image id.
+  local -a amount=() masked=()
+  if [[ -n "${SEAM_MASKED_AMOUNT:-}" ]]; then
+    : "${SEAM_PAYMENT_MASKED_ELF:?SEAM_PAYMENT_MASKED_ELF: the pinned amount-hidden guest}"
+    amount=(--masked-amount "$SEAM_MASKED_AMOUNT")
+    masked=(--masked)
+  else
+    : "${SEAM_PAYMENT_ELF:?SEAM_PAYMENT_ELF: the pinned payment guest}"
+  fi
   [[ -x "$(docker_seam test)" ]] || { echo "run guests first: the Groth16 wrap uses its build" >&2; exit 1; }
   mkdir -p "$out"
   # A new directory only this user can open, never one left behind or made by someone else.
@@ -106,17 +124,17 @@ prove() {
   export TMPDIR="$SCRATCH"
   # 2^20-cycle segments suit a 24 GB GPU (seam's default, 2^18, suits an 8 GB machine).
   export SEAM_SEGMENT_PO2="${SEAM_SEGMENT_PO2:-20}"
-  "$CUDA_SEAM" image-id | tee "$out/image-id"
-  "$CUDA_SEAM" execute "$witness" | tee "$out/execute.txt"
+  "$CUDA_SEAM" image-id "${masked[@]}" | tee "$out/image-id"
+  "$CUDA_SEAM" execute "$witness" "${amount[@]}" | tee "$out/execute.txt"
   started=$(date +%s)
-  "$CUDA_SEAM" prove "$witness" "$out/payment.receipt"
+  "$CUDA_SEAM" prove "$witness" "$out/payment.receipt" "${amount[@]}"
   echo "succinct: $(( $(date +%s) - started )) s" | tee -a "$out/timings.txt"
   started=$(date +%s)
   if [[ "${GROTH16:-}" == cuda ]]; then
-    "$CUDA_SEAM" p254 "$out/payment.receipt" "$out/payment.p254"
-    "$CUDA_SEAM" shrink-wrap "$out/payment.p254" "$out/payment.receipt" "$out/seal.json"
+    "$CUDA_SEAM" p254 "${masked[@]}" "$out/payment.receipt" "$out/payment.p254"
+    "$CUDA_SEAM" shrink-wrap "${masked[@]}" "$out/payment.p254" "$out/payment.receipt" "$out/seal.json"
   else
-    "$(docker_seam test)" groth16 "$out/payment.receipt" "$out/seal.json"
+    "$(docker_seam test)" groth16 "${masked[@]}" "$out/payment.receipt" "$out/seal.json"
   fi
   echo "groth16: $(( $(date +%s) - started )) s" | tee -a "$out/timings.txt"
 }

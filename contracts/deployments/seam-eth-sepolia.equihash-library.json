@@ -1,0 +1,7 @@
+{
+  "ZcashEquihash": "0x42847B5C7a13abd1c9b0E61ea59E44f1EE1351aD",
+  "chainId": 11155111,
+  "deployTx": "0x5ad0a1cbca2799581ed8eb703fabfa78bd4492ebf08408aed3d07621edc5275e",
+  "gasUsed": 2321924,
+  "note": "The library ZcashHeaderRelay links (src/relay/ZcashEquihash.sol), deployed on its own before deployments/seam-eth-sepolia.relay.json with `--libraries src/relay/ZcashEquihash.sol:ZcashEquihash:<address>`. Deployed from out/ZcashEquihash.sol/ZcashEquihash.json with the gas a Sepolia node estimated: Foundry's local simulation underestimates Sepolia's code pricing since Glamsterdam."
+}

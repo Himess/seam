@@ -118,8 +118,19 @@ above the transaction gas limit and freeze the relay (Zecured's contracts review
 
 ## Gas
 
+**Since 12 November 2026 the relay is built differently**, so that it deploys in one transaction on chains that price
+code like Ethereum Sepolia since Glamsterdam (about 1,560 gas a byte of code, at most 2^24 gas a transaction): the
+relay compiles through the IR pipeline (`foundry.toml`'s compilation restriction) and `ZcashEquihash.verify` is a
+library deployed on its own. Its code went from 9,862 to 7,788 bytes
+([`ZcashHeaderRelaySize.t.sol`](../../test/relay/ZcashHeaderRelaySize.t.sol)), and on Sepolia the deployment needs
+16,327,182 gas plus 2,287,867 for the library (estimated by a Sepolia node). The checks are the same. A header costs
+more: mean **722,355** gas on Testnet (min 710,071, max 761,735) and **676,786** on Mainnet before NU7, by the same
+measurement as the table below. The library alone adds 3,872 gas a header; the IR pipeline the rest. The relays
+already deployed keep their code and the costs below.
+
 Measured with `forge test --isolate` (each submission its own transaction, cold storage), solc 0.8.28, optimizer 200
-runs, over the 32 real post-NU7 headers of `testnet_recent.json` and the first 32 headers of `mainnet_recent.json`:
+runs, over the 32 real post-NU7 headers of `testnet_recent.json` and the first 32 headers of `mainnet_recent.json`
+(the build before 12 November 2026):
 
 | | gas |
 |---|---|

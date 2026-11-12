@@ -145,6 +145,10 @@ seam witness --ufvk-file <ufvk> --txid <txid> --salt-file <salt> --anchor <heigh
 SEAM_PAYMENT_ELF=payment-test.bin seam seal witness.json seal.json
 ```
 
+**Hiding the amount:** an app that must not publish the amount publishes a masked `M = Z + R` instead, R coming from the
+commitment's salt, and checks an amount-hidden proof (journal version 2) with `ZcashMaskedPaymentVerifier`. The payer
+checks M with `seam mask` before paying; `seam seal --masked-amount <M>` proves it ([docs/PAYMENTS.md § 9](docs/PAYMENTS.md)).
+
 **What others learn:** the light wallet server `seam witness` asks learns which transaction and block you prove, and
 from where: use a server you run, or Tor. A witness holds the receiver and the salt: prove on a machine you control.
 
@@ -247,7 +251,7 @@ This runs the payment statement's K4 catalog natively, on both networks' stateme
 Testnet peers and a light wallet server are ignored; `crates/seam-chain/tests/network.rs` says how to run them. The
 guest builds on Linux or macOS only, with `cargo build -p seam-zkvm-methods`: reproducibly in RISC Zero's Docker
 builder with `SEAM_DOCKER_GUESTS=1`, otherwise with the local risc0 toolchain. Either way it needs rzup's Rust 1.97.0
-and r0vm 3.0.6. The Docker build sends the whole repository to Docker but `target/` and `.git/`: build from a clean
+and r0vm 3.1.0. The Docker build sends the whole repository to Docker but `target/` and `.git/`: build from a clean
 copy (`git archive`), with no `.env`, wallet or witness in it, as `scripts/gpu-prove.sh guests` does.
 
 The zkVM commands, with `--features zkvm` (and `cuda` on an NVIDIA GPU, `mainnet` for Mainnet): `seam execute
@@ -279,6 +283,8 @@ reproducible guests, the verifier, the CLI, an example escrow), live on Base Sep
 2. **Mainnet payments:** a real Mainnet payment proven against real NU6.3 and NU7 history, before a Mainnet verifier.
 3. **The payer proves:** recovering a payment with the payer's outgoing viewing key, so any wallet's payer can prove.
 4. **A standalone relayer:** Zecured's Rust relayer, with lag alarms.
+   - **Batched header proofs:** headers proven in batches in a zkVM, so the relay checks one proof for many headers and
+     costs a fraction on Ethereum L1, with the verifier's anchor check designed to fit both kinds of relay.
 5. **v1.0:** a written spec, an open review round and a draft ZIP.
 
 The smaller open work is in the [issues](https://github.com/Himess/seam/issues).

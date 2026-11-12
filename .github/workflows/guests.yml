@@ -1,7 +1,8 @@
-# Reproducible builds of the payment guest, one per Zcash network: the network is a build parameter of the statement,
-# so Testnet and Mainnet each have their own guest and image id (payment-test, payment-main). A ZcashPaymentVerifier
-# pins one for good, and provers run the ELF this job exports (SEAM_PAYMENT_ELF). A guest listed in
-# zkvm/pinned-image-ids.txt must build to its pinned id and ELF, or the job fails. Adapted from Zecured's guests
+# Reproducible builds of the payment guests, per Zcash network: the network is a build parameter of the statement, so
+# Testnet and Mainnet each have their own guests and image ids (payment-test, payment-main), and so does the
+# amount-hidden guest (payment-masked-test, payment-masked-main). A ZcashPaymentVerifier or ZcashMaskedPaymentVerifier
+# pins one for good, and provers run the ELF this job exports (SEAM_PAYMENT_ELF, SEAM_PAYMENT_MASKED_ELF). A guest
+# listed in zkvm/pinned-image-ids.txt must build to its pinned id and ELF, or the job fails. Adapted from Zecured's guests
 # workflow (73de9f909e270e8aea10c2b221905f62a6a4c4df).
 name: guests
 
@@ -59,7 +60,7 @@ jobs:
         run: |
           curl -sSfL https://risczero.com/install | bash
           "$HOME/.risc0/bin/rzup" install rust 1.97.0
-          "$HOME/.risc0/bin/rzup" install r0vm 3.0.6
+          "$HOME/.risc0/bin/rzup" install r0vm 3.1.0
           echo "$HOME/.risc0/bin" >> "$GITHUB_PATH"
 
       # The CLI's `mainnet` feature sets both the native statement and the embedded guest (its own `mainnet` feature):
@@ -73,18 +74,20 @@ jobs:
         if: always()
         run: df -h /
 
-      - name: The image id and the ELF to pin
+      - name: The image ids and the ELFs to pin
         env:
           NET: ${{ matrix.network }}
         run: |
           seam=target/release/seam
           mkdir -p guests
           "$seam" export-elf "guests/payment-$NET.bin"
+          "$seam" export-elf --masked "guests/payment-masked-$NET.bin"
           {
             echo "payment-$NET    $("$seam" image-id)  $(sha256sum "guests/payment-$NET.bin" | cut -d' ' -f1)"
+            echo "payment-masked-$NET    $("$seam" image-id --masked)  $(sha256sum "guests/payment-masked-$NET.bin" | cut -d' ' -f1)"
           } | tee "guests/image-ids-$NET.txt"
           {
-            echo "### Payment guest, $NET network (reproducible build)"
+            echo "### Payment guests, $NET network (reproducible build)"
             echo '```'
             cat "guests/image-ids-$NET.txt"
             echo '```'
@@ -96,22 +99,23 @@ jobs:
         env:
           NET: ${{ matrix.network }}
         run: |
-          read -r name id elf < "guests/image-ids-$NET.txt"
-          pinned_id=$(awk -v g="$name" '$1 == g { print $2 }' zkvm/pinned-image-ids.txt)
-          pinned_elf=$(awk -v g="$name" '$1 == g { print $3 }' zkvm/pinned-image-ids.txt)
-          if [ -z "$pinned_id" ]; then
-            echo "::notice::$name is not pinned: $id"
-            exit 0
-          fi
-          if [ "$id" != "$pinned_id" ]; then
-            echo "::error::$name builds to $id, pinned $pinned_id"
-            exit 1
-          fi
-          if [ "$elf" != "$pinned_elf" ]; then
-            echo "::error::$name's ELF differs from the pinned one"
-            exit 1
-          fi
-          echo "$name: pinned id and ELF"
+          status=0
+          while read -r name id elf; do
+            pinned_id=$(awk -v g="$name" '$1 == g { print $2 }' zkvm/pinned-image-ids.txt)
+            pinned_elf=$(awk -v g="$name" '$1 == g { print $3 }' zkvm/pinned-image-ids.txt)
+            if [ -z "$pinned_id" ]; then
+              echo "::notice::$name is not pinned: $id"
+            elif [ "$id" != "$pinned_id" ]; then
+              echo "::error::$name builds to $id, pinned $pinned_id"
+              status=1
+            elif [ "$elf" != "$pinned_elf" ]; then
+              echo "::error::$name's ELF differs from the pinned one"
+              status=1
+            else
+              echo "$name: pinned id and ELF"
+            fi
+          done < "guests/image-ids-$NET.txt"
+          exit "$status"
 
       # The statement natively, on this network's build: its K4 catalog on the synthetic fixture.
       - name: The statement, natively
